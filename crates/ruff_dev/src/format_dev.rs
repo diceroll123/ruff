@@ -14,6 +14,7 @@ use ruff_python_formatter::{
 };
 use serde::Deserialize;
 use similar::{ChangeTag, TextDiff};
+use std::cmp::Ordering;
 use std::fmt::{Display, Formatter};
 use std::fs::File;
 use std::io::{BufWriter, Write};
@@ -87,16 +88,19 @@ pub(crate) struct Statistics {
     ruff_output: u32,
     /// The number of matching identical lines
     intersection: u32,
+    /// Time the formatter took
+    duration: Duration,
 }
 
 impl Statistics {
-    pub(crate) fn from_versions(black: &str, ruff: &str) -> Self {
+    pub(crate) fn from_versions(black: &str, ruff: &str, duration: Duration) -> Self {
         if black == ruff {
             let intersection = u32::try_from(black.lines().count()).unwrap();
             Self {
                 black_input: 0,
                 ruff_output: 0,
                 intersection,
+                duration,
             }
         } else {
             let diff = TextDiff::from_lines(black, ruff);
@@ -132,6 +136,7 @@ impl Add<Statistics> for Statistics {
             black_input: self.black_input + rhs.black_input,
             ruff_output: self.ruff_output + rhs.ruff_output,
             intersection: self.intersection + rhs.intersection,
+            duration: self.duration + rhs.duration,
         }
     }
 }
@@ -139,6 +144,35 @@ impl Add<Statistics> for Statistics {
 impl AddAssign<Statistics> for Statistics {
     fn add_assign(&mut self, rhs: Statistics) {
         *self = *self + rhs;
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+struct TimedFile {
+    duration: Duration,
+    ruff_lines: u32,
+    file: PathBuf,
+}
+
+impl TimedFile {
+    fn score(&self) -> f32 {
+        let score = -(self.duration.as_secs_f32() / self.ruff_lines as f32).log10();
+        if !score.is_normal() {
+            return 0f32;
+        }
+        score
+    }
+}
+
+impl Ord for TimedFile {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.score().total_cmp(&other.score())
+    }
+}
+
+impl PartialOrd for TimedFile {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
     }
 }
 
@@ -197,6 +231,15 @@ pub(crate) fn main(args: &Args) -> anyhow::Result<ExitCode> {
         let result = format_dev_project(&args.files, args.stability_check, args.write)?;
         let error_count = result.error_count();
 
+        if let Some(slowest_file) = &result.slowest_file {
+            info!(
+                parent: None,
+                "Slowest file {}: {:?}",
+                slowest_file.score(),
+                slowest_file,
+            );
+        }
+
         if result.error_count() > 0 {
             error!(parent: None, "{}", result.display(args.format));
         }
@@ -247,6 +290,7 @@ fn setup_logging(log_level_args: &LogLevelArgs) {
 fn format_dev_multi_project(args: &Args) -> anyhow::Result<bool> {
     let mut total_errors = 0;
     let mut total_files = 0;
+    let mut slowest_file = None;
     let start = Instant::now();
 
     let mut project_paths = Vec::new();
@@ -277,7 +321,7 @@ fn format_dev_multi_project(args: &Args) -> anyhow::Result<bool> {
     };
 
     for project_path in project_paths {
-        info!(parent: None, "Starting {}", project_path.display());
+        debug!(parent: None, "Starting {}", project_path.display());
 
         match format_dev_project(&[project_path.clone()], args.stability_check, args.write) {
             Ok(result) => {
@@ -304,6 +348,11 @@ fn format_dev_multi_project(args: &Args) -> anyhow::Result<bool> {
                     error_file.flush().unwrap();
                 }
 
+                // -log10 means all values are greater 0
+                if slowest_file < result.slowest_file {
+                    slowest_file = result.slowest_file;
+                }
+
                 pb_span.pb_inc(1);
             }
             Err(error) => {
@@ -317,6 +366,15 @@ fn format_dev_multi_project(args: &Args) -> anyhow::Result<bool> {
     drop(pb_span);
 
     let duration = start.elapsed();
+
+    if let Some(slowest_file) = slowest_file {
+        info!(
+            parent: None,
+            "Slowest file {}: {:?}",
+            slowest_file.score(),
+            slowest_file,
+        );
+    }
 
     info!(
         parent: None,
@@ -369,10 +427,25 @@ fn format_dev_project(
     let mut statistics = Statistics::default();
     let mut formatted_counter = 0;
     let mut diagnostics = Vec::new();
+    let mut slowest_file = None;
     for (result, file) in results {
         formatted_counter += 1;
         match result {
-            Ok(statistics_file) => statistics += statistics_file,
+            Ok(statistics_file) => {
+                let time_file = TimedFile {
+                    duration: statistics_file.duration,
+                    ruff_lines: statistics_file.ruff_output + statistics_file.intersection,
+                    file,
+                };
+
+                // ignore small file noise
+                if time_file.duration > Duration::from_millis(5)
+                    && slowest_file.as_ref().map_or(true, |y| *y > time_file)
+                {
+                    slowest_file = Some(time_file);
+                }
+                statistics += statistics_file;
+            }
             Err(error) => diagnostics.push(Diagnostic { file, error }),
         }
     }
@@ -384,6 +457,7 @@ fn format_dev_project(
         file_count: formatted_counter,
         diagnostics,
         statistics,
+        slowest_file,
     })
 }
 
@@ -472,6 +546,7 @@ struct CheckRepoResult {
     file_count: usize,
     diagnostics: Vec<Diagnostic>,
     statistics: Statistics,
+    slowest_file: Option<TimedFile>,
 }
 
 impl CheckRepoResult {
@@ -588,15 +663,6 @@ Formatted twice:
             CheckFileError::IoError(error) => {
                 writeln!(f, "Error reading {}: {}", file.display(), error)?;
             }
-            #[cfg(not(debug_assertions))]
-            CheckFileError::Slow(duration) => {
-                writeln!(
-                    f,
-                    "Slow formatting {}: Formatting the file took {}ms",
-                    file.display(),
-                    duration.as_millis()
-                )?;
-            }
         }
         Ok(())
     }
@@ -624,10 +690,6 @@ enum CheckFileError {
     IoError(io::Error),
     /// From `catch_unwind`
     Panic { message: String },
-
-    /// Formatting a file took too long
-    #[cfg(not(debug_assertions))]
-    Slow(Duration),
 }
 
 impl CheckFileError {
@@ -640,8 +702,6 @@ impl CheckFileError {
             | CheckFileError::FormatError(_)
             | CheckFileError::PrintError(_)
             | CheckFileError::Panic { .. } => false,
-            #[cfg(not(debug_assertions))]
-            CheckFileError::Slow(_) => false,
         }
     }
 }
@@ -660,7 +720,6 @@ fn format_dev_file(
     options: PyFormatOptions,
 ) -> Result<Statistics, CheckFileError> {
     let content = fs::read_to_string(input_path)?;
-    #[cfg(not(debug_assertions))]
     let start = Instant::now();
     let printed = match format_module(&content, options.clone()) {
         Ok(printed) => printed,
@@ -675,8 +734,7 @@ fn format_dev_file(
         }
     };
     let formatted = printed.as_code();
-    #[cfg(not(debug_assertions))]
-    let format_duration = Instant::now() - start;
+    let duration = Instant::now() - start;
 
     if write && content != formatted {
         // Simple atomic write.
@@ -713,12 +771,7 @@ fn format_dev_file(
         }
     }
 
-    #[cfg(not(debug_assertions))]
-    if format_duration > Duration::from_millis(50) {
-        return Err(CheckFileError::Slow(format_duration));
-    }
-
-    Ok(Statistics::from_versions(&content, formatted))
+    Ok(Statistics::from_versions(&content, formatted, duration))
 }
 
 #[derive(Deserialize, Default)]
