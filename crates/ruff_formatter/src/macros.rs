@@ -343,28 +343,31 @@ mod tests {
 
     struct TestFormat;
 
-    impl Format<()> for TestFormat {
-        fn fmt(&self, f: &mut Formatter<()>) -> FormatResult<()> {
+    impl Format<SimpleFormatContext> for TestFormat {
+        fn fmt(&self, f: &mut Formatter<SimpleFormatContext>) -> FormatResult<()> {
             write!(f, [text("test")])
         }
     }
 
     #[test]
     fn test_single_element() {
-        let mut state = FormatState::new(());
+        let mut state = FormatState::new(SimpleFormatContext::default());
         let mut buffer = VecBuffer::new(&mut state);
 
         write![&mut buffer, [TestFormat]].unwrap();
 
         assert_eq!(
             buffer.into_vec(),
-            vec![FormatElement::StaticText { text: "test" }]
+            vec![FormatElement::StaticText {
+                text: "test",
+                text_width: TextWidth::new_width(4)
+            }]
         );
     }
 
     #[test]
     fn test_multiple_elements() {
-        let mut state = FormatState::new(());
+        let mut state = FormatState::new(SimpleFormatContext::default());
         let mut buffer = VecBuffer::new(&mut state);
 
         write![
@@ -376,11 +379,20 @@ mod tests {
         assert_eq!(
             buffer.into_vec(),
             vec![
-                FormatElement::StaticText { text: "a" },
+                FormatElement::StaticText {
+                    text: "a",
+                    text_width: TextWidth::new_width(1)
+                },
                 FormatElement::Space,
-                FormatElement::StaticText { text: "simple" },
+                FormatElement::StaticText {
+                    text: "simple",
+                    text_width: TextWidth::new_width(6)
+                },
                 FormatElement::Space,
-                FormatElement::StaticText { text: "test" }
+                FormatElement::StaticText {
+                    text: "test",
+                    text_width: TextWidth::new_width(4)
+                }
             ]
         );
     }

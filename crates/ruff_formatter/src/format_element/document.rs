@@ -4,7 +4,7 @@ use crate::prelude::tag::GroupMode;
 use crate::prelude::*;
 use crate::printer::LineEnding;
 use crate::source_code::SourceCode;
-use crate::{format, write};
+use crate::{format, write, TabWidth};
 use crate::{
     BufferExtensions, Format, FormatContext, FormatElement, FormatOptions, FormatResult, Formatter,
     IndentStyle, LineWidth, PrinterOptions,
@@ -103,11 +103,12 @@ impl Document {
                         expands = false;
                         continue;
                     }
-                    FormatElement::StaticText { text } => text.contains('\n'),
+                    FormatElement::StaticText {
+                        text: _,
+                        text_width,
+                    } => text_width.is_multiline(),
                     FormatElement::DynamicText { text, .. } => text.contains('\n'),
-                    FormatElement::SourceCodeSlice {
-                        contains_newlines, ..
-                    } => *contains_newlines,
+                    FormatElement::SourceCodeSlice { text_width, .. } => text_width.is_multiline(),
                     FormatElement::ExpandParent
                     | FormatElement::Line(LineMode::Hard | LineMode::Empty) => true,
                     _ => false,
@@ -211,13 +212,17 @@ impl FormatOptions for IrFormatOptions {
         IndentStyle::Space(2)
     }
 
+    fn tab_width(&self) -> TabWidth {
+        TabWidth::default()
+    }
+
     fn line_width(&self) -> LineWidth {
         LineWidth(80)
     }
 
     fn as_print_options(&self) -> PrinterOptions {
         PrinterOptions {
-            tab_width: 2,
+            tab_width: self.tab_width(),
             print_width: self.line_width().into(),
             line_ending: LineEnding::LineFeed,
             indent_style: IndentStyle::Space(2),
@@ -255,11 +260,13 @@ impl Format<IrFormatContext<'_>> for &[FormatElement] {
                         element: &FormatElement,
                         f: &mut Formatter<IrFormatContext>,
                     ) -> FormatResult<()> {
-                        let text = match element {
-                            FormatElement::StaticText { text } => text,
-                            FormatElement::DynamicText { text } => text.as_ref(),
-                            FormatElement::SourceCodeSlice { slice, .. } => {
-                                slice.text(f.context().source_code())
+                        let (text, text_width) = match element {
+                            FormatElement::StaticText { text, text_width } => (*text, *text_width),
+                            FormatElement::DynamicText { text, text_width } => {
+                                (text.as_ref(), *text_width)
+                            }
+                            FormatElement::SourceCodeSlice { slice, text_width } => {
+                                (slice.text(f.context().source_code()), *text_width)
                             }
                             _ => unreachable!(),
                         };
@@ -267,6 +274,7 @@ impl Format<IrFormatContext<'_>> for &[FormatElement] {
                         if text.contains('"') {
                             f.write_element(FormatElement::DynamicText {
                                 text: text.replace('"', r#"\""#).into(),
+                                text_width,
                             })
                         } else {
                             f.write_element(element.clone())
@@ -876,16 +884,25 @@ mod tests {
         use Tag::*;
 
         let document = Document::from(vec![
-            FormatElement::StaticText { text: "[" },
+            FormatElement::StaticText {
+                text: "[",
+                text_width: TextWidth::new_width(1),
+            },
             FormatElement::Tag(StartGroup(tag::Group::new())),
             FormatElement::Tag(StartIndent),
             FormatElement::Line(LineMode::Soft),
-            FormatElement::StaticText { text: "a" },
+            FormatElement::StaticText {
+                text: "a",
+                text_width: TextWidth::new_width(1),
+            },
             // Close group instead of indent
             FormatElement::Tag(EndGroup),
             FormatElement::Line(LineMode::Soft),
             FormatElement::Tag(EndIndent),
-            FormatElement::StaticText { text: "]" },
+            FormatElement::StaticText {
+                text: "]",
+                text_width: TextWidth::new_width(1),
+            },
             // End tag without start
             FormatElement::Tag(EndIndent),
             // Start tag without an end

@@ -52,7 +52,7 @@ pub use crate::diagnostics::{ActualStart, FormatError, InvalidDocumentError, Pri
 pub use format_element::{normalize_newlines, FormatElement, LINE_TERMINATORS};
 pub use group_id::GroupId;
 use ruff_text_size::{TextRange, TextSize};
-use std::num::ParseIntError;
+use std::num::{NonZeroU8, ParseIntError, TryFromIntError};
 use std::str::FromStr;
 
 #[derive(Debug, Eq, PartialEq, Clone, Copy, Hash)]
@@ -106,6 +106,35 @@ impl std::fmt::Display for IndentStyle {
             IndentStyle::Tab => std::write!(f, "Tab"),
             IndentStyle::Space(size) => std::write!(f, "Spaces, size: {size}"),
         }
+    }
+}
+
+/// Width of a tab.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+pub struct TabWidth(NonZeroU8);
+
+impl TabWidth {
+    /// Return the numeric value for this [LineWidth]
+    pub const fn value(&self) -> u32 {
+        self.0.get() as u32
+    }
+}
+
+impl Default for TabWidth {
+    fn default() -> Self {
+        // SAFETY: 2 is guaranteed to not be 0
+        #[allow(unsafe_code)]
+        Self(unsafe { NonZeroU8::new_unchecked(2) })
+    }
+}
+
+impl TryFrom<u8> for TabWidth {
+    type Error = TryFromIntError;
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        NonZeroU8::try_from(value).map(Self)
     }
 }
 
@@ -214,6 +243,9 @@ pub trait FormatOptions {
     /// The indent style.
     fn indent_style(&self) -> IndentStyle;
 
+    /// The visual width of a tab character.
+    fn tab_width(&self) -> TabWidth;
+
     /// What's the max width of a line. Defaults to 80.
     fn line_width(&self) -> LineWidth;
 
@@ -265,6 +297,10 @@ impl FormatOptions for SimpleFormatOptions {
         self.indent_style
     }
 
+    fn tab_width(&self) -> TabWidth {
+        TabWidth::default()
+    }
+
     fn line_width(&self) -> LineWidth {
         self.line_width
     }
@@ -272,6 +308,7 @@ impl FormatOptions for SimpleFormatOptions {
     fn as_print_options(&self) -> PrinterOptions {
         PrinterOptions::default()
             .with_indent(self.indent_style)
+            .with_tab_width(self.tab_width())
             .with_print_width(self.line_width.into())
     }
 }

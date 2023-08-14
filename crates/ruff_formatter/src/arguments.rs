@@ -129,7 +129,7 @@ mod tests {
 
     #[test]
     fn test_nesting() {
-        let mut context = FormatState::new(());
+        let mut context = FormatState::new(SimpleFormatContext::default());
         let mut buffer = VecBuffer::new(&mut context);
 
         write!(
@@ -147,14 +147,26 @@ mod tests {
         assert_eq!(
             buffer.into_vec(),
             vec![
-                FormatElement::StaticText { text: "function" },
+                FormatElement::StaticText {
+                    text: "function",
+                    text_width: TextWidth::new_width(8)
+                },
                 FormatElement::Space,
-                FormatElement::StaticText { text: "a" },
+                FormatElement::StaticText {
+                    text: "a",
+                    text_width: TextWidth::new_width(1)
+                },
                 FormatElement::Space,
                 // Group
                 FormatElement::Tag(Tag::StartGroup(tag::Group::new())),
-                FormatElement::StaticText { text: "(" },
-                FormatElement::StaticText { text: ")" },
+                FormatElement::StaticText {
+                    text: "(",
+                    text_width: TextWidth::new_width(1)
+                },
+                FormatElement::StaticText {
+                    text: ")",
+                    text_width: TextWidth::new_width(1)
+                },
                 FormatElement::Tag(Tag::EndGroup)
             ]
         );

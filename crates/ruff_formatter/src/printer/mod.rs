@@ -7,8 +7,8 @@ mod stack;
 use crate::format_element::document::Document;
 use crate::format_element::tag::{Condition, GroupMode};
 use crate::format_element::{BestFittingVariants, LineMode, PrintMode};
-use crate::prelude::tag;
 use crate::prelude::tag::{DedentMode, Tag, TagKind, VerbatimKind};
+use crate::prelude::{tag, TextWidth};
 use crate::printer::call_stack::{
     CallStack, FitsCallStack, PrintCallStack, PrintElementArgs, StackFrame,
 };
@@ -90,31 +90,35 @@ impl<'a> Printer<'a> {
         let args = stack.top();
 
         match element {
-            FormatElement::Space => self.print_text(" ", None),
-            FormatElement::StaticText { text } => self.print_text(text, None),
-            FormatElement::DynamicText { text } => self.print_text(text, None),
-            FormatElement::SourceCodeSlice { slice, .. } => {
+            FormatElement::Space => self.print_text(" ", TextWidth::new_width(1), None),
+            FormatElement::StaticText { text, text_width } => {
+                self.print_text(text, *text_width, None)
+            }
+            FormatElement::DynamicText { text, text_width } => {
+                self.print_text(text, *text_width, None)
+            }
+            FormatElement::SourceCodeSlice { slice, text_width } => {
                 let text = slice.text(self.source_code);
-                self.print_text(text, Some(slice.range()));
+                self.print_text(text, *text_width, Some(slice.range()));
             }
             FormatElement::Line(line_mode) => {
                 if args.mode().is_flat()
                     && matches!(line_mode, LineMode::Soft | LineMode::SoftOrSpace)
                 {
                     if line_mode == &LineMode::SoftOrSpace {
-                        self.print_text(" ", None);
+                        self.print_text(" ", TextWidth::new_width(1), None);
                     }
                 } else if self.state.line_suffixes.has_pending() {
                     self.flush_line_suffixes(queue, stack, Some(element));
                 } else {
                     // Only print a newline if the current line isn't already empty
                     if self.state.line_width > 0 {
-                        self.print_str("\n");
+                        self.print_char('\n');
                     }
 
                     // Print a second line break if this is an empty line
                     if line_mode == &LineMode::Empty {
-                        self.print_str("\n");
+                        self.print_char('\n');
                     }
 
                     self.state.pending_indent = args.indention();
@@ -332,7 +336,7 @@ impl<'a> Printer<'a> {
         Ok(group_mode)
     }
 
-    fn print_text(&mut self, text: &str, source_range: Option<TextRange>) {
+    fn print_text(&mut self, text: &str, text_width: TextWidth, source_range: Option<TextRange>) {
         if !self.state.pending_indent.is_empty() {
             let (indent_char, repeat_count) = match self.options.indent_style() {
                 IndentStyle::Tab => ('\t', 1),
@@ -370,7 +374,7 @@ impl<'a> Printer<'a> {
 
         self.push_marker();
 
-        self.print_str(text);
+        self.print_str(text, text_width);
 
         if let Some(range) = source_range {
             self.state.source_position = range.end();
@@ -687,9 +691,14 @@ impl<'a> Printer<'a> {
         invalid_end_tag(TagKind::Entry, stack.top_kind())
     }
 
-    fn print_str(&mut self, content: &str) {
-        for char in content.chars() {
-            self.print_char(char);
+    fn print_str(&mut self, content: &str, text_width: TextWidth) {
+        if let Some(width) = text_width.width() {
+            self.state.buffer.push_str(content);
+            self.state.line_width += width;
+        } else {
+            for char in content.chars() {
+                self.print_char(char);
+            }
         }
     }
 
@@ -709,7 +718,7 @@ impl<'a> Printer<'a> {
 
             #[allow(clippy::cast_possible_truncation)]
             let char_width = if char == '\t' {
-                u32::from(self.options.tab_width)
+                self.options.tab_width.value()
             } else {
                 // SAFETY: A u32 is sufficient to represent the width of a file <= 4GB
                 char.width().unwrap_or(0) as u32
@@ -1018,12 +1027,14 @@ impl<'a, 'print> FitsMeasurer<'a, 'print> {
         let args = self.stack.top();
 
         match element {
-            FormatElement::Space => return Ok(self.fits_text(" ", args)),
+            FormatElement::Space => return Ok(self.fits_text(" ", TextWidth::new_width(1), args)),
 
             FormatElement::Line(line_mode) => {
                 match args.mode() {
                     PrintMode::Flat => match line_mode {
-                        LineMode::SoftOrSpace => return Ok(self.fits_text(" ", args)),
+                        LineMode::SoftOrSpace => {
+                            return Ok(self.fits_text(" ", TextWidth::new_width(1), args))
+                        }
                         LineMode::Soft => {}
                         LineMode::Hard | LineMode::Empty => {
                             return Ok(if self.must_be_flat {
@@ -1052,11 +1063,15 @@ impl<'a, 'print> FitsMeasurer<'a, 'print> {
                 }
             }
 
-            FormatElement::StaticText { text } => return Ok(self.fits_text(text, args)),
-            FormatElement::DynamicText { text, .. } => return Ok(self.fits_text(text, args)),
-            FormatElement::SourceCodeSlice { slice, .. } => {
+            FormatElement::StaticText { text, text_width } => {
+                return Ok(self.fits_text(text, *text_width, args))
+            }
+            FormatElement::DynamicText { text, text_width } => {
+                return Ok(self.fits_text(text, *text_width, args))
+            }
+            FormatElement::SourceCodeSlice { slice, text_width } => {
                 let text = slice.text(self.printer.source_code);
-                return Ok(self.fits_text(text, args));
+                return Ok(self.fits_text(text, *text_width, args));
             }
             FormatElement::LineSuffixBoundary => {
                 if self.state.has_line_suffix {
@@ -1269,32 +1284,37 @@ impl<'a, 'print> FitsMeasurer<'a, 'print> {
         Fits::Maybe
     }
 
-    fn fits_text(&mut self, text: &str, args: PrintElementArgs) -> Fits {
+    fn fits_text(&mut self, text: &str, text_width: TextWidth, args: PrintElementArgs) -> Fits {
         let indent = std::mem::take(&mut self.state.pending_indent);
         self.state.line_width += u32::from(indent.level())
             * u32::from(self.options().indent_width())
             + u32::from(indent.align());
 
-        for c in text.chars() {
-            let char_width = match c {
-                '\t' => u32::from(self.options().tab_width),
-                '\n' => {
-                    if self.must_be_flat {
-                        return Fits::No;
+        if let Some(width) = text_width.width() {
+            self.state.line_width += width;
+        } else {
+            for c in text.chars() {
+                let char_width = match c {
+                    '\t' => self.options().tab_width.value(),
+                    '\n' => {
+                        if self.must_be_flat {
+                            return Fits::No;
+                        } else {
+                            match args.measure_mode() {
+                                MeasureMode::FirstLine => return Fits::Yes,
+                                MeasureMode::AllLines => {
+                                    self.state.line_width = 0;
+                                    continue;
+                                }
+                            }
+                        };
                     }
-                    match args.measure_mode() {
-                        MeasureMode::FirstLine => return Fits::Yes,
-                        MeasureMode::AllLines => {
-                            self.state.line_width = 0;
-                            continue;
-                        }
-                    }
-                }
-                // SAFETY: A u32 is sufficient to format files <= 4GB
-                #[allow(clippy::cast_possible_truncation)]
-                c => c.width().unwrap_or(0) as u32,
-            };
-            self.state.line_width += char_width;
+                    // SAFETY: A u32 is sufficient to format files <= 4GB
+                    #[allow(clippy::cast_possible_truncation)]
+                    c => c.width().unwrap_or(0) as u32,
+                };
+                self.state.line_width += char_width;
+            }
         }
 
         if self.state.line_width > self.options().print_width.into() {
@@ -1407,7 +1427,9 @@ mod tests {
     use crate::prelude::*;
     use crate::printer::{LineEnding, PrintWidth, Printer, PrinterOptions};
     use crate::source_code::SourceCode;
-    use crate::{format_args, write, Document, FormatState, IndentStyle, Printed, VecBuffer};
+    use crate::{
+        format_args, write, Document, FormatState, IndentStyle, Printed, TabWidth, VecBuffer,
+    };
 
     fn format(root: &dyn Format<SimpleFormatContext>) -> Printed {
         format_with_options(
@@ -1557,7 +1579,7 @@ two lines`,
     fn it_use_the_indent_character_specified_in_the_options() {
         let options = PrinterOptions {
             indent_style: IndentStyle::Tab,
-            tab_width: 4,
+            tab_width: TabWidth::try_from(4).unwrap(),
             print_width: PrintWidth::new(19),
             ..PrinterOptions::default()
         };
@@ -1614,7 +1636,7 @@ two lines`,
 
     #[test]
     fn test_fill_breaks() {
-        let mut state = FormatState::new(());
+        let mut state = FormatState::new(SimpleFormatContext::default());
         let mut buffer = VecBuffer::new(&mut state);
         let mut formatter = Formatter::new(&mut buffer);
 

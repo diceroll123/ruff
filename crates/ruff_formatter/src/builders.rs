@@ -1,7 +1,9 @@
 use crate::format_element::tag::{Condition, Tag};
 use crate::prelude::tag::{DedentMode, GroupMode, LabelId};
 use crate::prelude::*;
-use crate::{format_element, write, Argument, Arguments, FormatContext, GroupId, TextSize};
+use crate::{
+    format_element, write, Argument, Arguments, FormatContext, FormatOptions, GroupId, TextSize,
+};
 use crate::{Buffer, VecBuffer};
 
 use ruff_text_size::TextRange;
@@ -264,9 +266,15 @@ pub struct StaticText {
     text: &'static str,
 }
 
-impl<Context> Format<Context> for StaticText {
+impl<Context> Format<Context> for StaticText
+where
+    Context: FormatContext,
+{
     fn fmt(&self, f: &mut Formatter<Context>) -> FormatResult<()> {
-        f.write_element(FormatElement::StaticText { text: self.text })
+        f.write_element(FormatElement::StaticText {
+            text: self.text,
+            text_width: TextWidth::from_text(self.text, f.options().tab_width()),
+        })
     }
 }
 
@@ -343,7 +351,10 @@ pub struct DynamicText<'a> {
     position: Option<TextSize>,
 }
 
-impl<Context> Format<Context> for DynamicText<'_> {
+impl<Context> Format<Context> for DynamicText<'_>
+where
+    Context: FormatContext,
+{
     fn fmt(&self, f: &mut Formatter<Context>) -> FormatResult<()> {
         if let Some(source_position) = self.position {
             f.write_element(FormatElement::SourcePosition(source_position))?;
@@ -351,6 +362,7 @@ impl<Context> Format<Context> for DynamicText<'_> {
 
         f.write_element(FormatElement::DynamicText {
             text: self.text.to_string().into_boxed_str(),
+            text_width: TextWidth::from_text(self.text, f.options().tab_width()),
         })
     }
 }
@@ -398,28 +410,27 @@ where
         let slice = source_code.slice(self.range);
         debug_assert_no_newlines(slice.text(source_code));
 
-        let contains_newlines = match self.new_lines {
+        let text_width = match self.new_lines {
             ContainsNewlines::Yes => {
                 debug_assert!(
                     slice.text(source_code).contains('\n'),
                     "Text contains no new line characters but the caller specified that it does."
                 );
-                true
+                TextWidth::Multiline
             }
             ContainsNewlines::No => {
                 debug_assert!(
                     !slice.text(source_code).contains('\n'),
                     "Text contains new line characters but the caller specified that it does not."
                 );
-                false
+                TextWidth::from_text(slice.text(source_code), f.context().options().tab_width())
             }
-            ContainsNewlines::Detect => slice.text(source_code).contains('\n'),
+            ContainsNewlines::Detect => {
+                TextWidth::from_text(slice.text(source_code), f.context().options().tab_width())
+            }
         };
 
-        f.write_element(FormatElement::SourceCodeSlice {
-            slice,
-            contains_newlines,
-        })
+        f.write_element(FormatElement::SourceCodeSlice { slice, text_width })
     }
 }
 

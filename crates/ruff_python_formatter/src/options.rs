@@ -1,5 +1,5 @@
 use ruff_formatter::printer::{LineEnding, PrinterOptions};
-use ruff_formatter::{FormatOptions, IndentStyle, LineWidth};
+use ruff_formatter::{FormatOptions, IndentStyle, LineWidth, TabWidth};
 use ruff_python_ast::PySourceType;
 use std::path::Path;
 use std::str::FromStr;
@@ -106,13 +106,17 @@ impl FormatOptions for PyFormatOptions {
         self.indent_style
     }
 
+    fn tab_width(&self) -> TabWidth {
+        TabWidth::try_from(4).unwrap()
+    }
+
     fn line_width(&self) -> LineWidth {
         self.line_width
     }
 
     fn as_print_options(&self) -> PrinterOptions {
         PrinterOptions {
-            tab_width: 4,
+            tab_width: self.tab_width(),
             print_width: self.line_width.into(),
             line_ending: LineEnding::LineFeed,
             indent_style: self.indent_style,

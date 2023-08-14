@@ -3,12 +3,14 @@ pub mod tag;
 
 use std::borrow::Cow;
 use std::hash::{Hash, Hasher};
+use std::num::NonZeroU32;
 use std::ops::Deref;
 use std::rc::Rc;
+use unicode_width::UnicodeWidthChar;
 
 use crate::format_element::tag::{GroupMode, LabelId, Tag};
 use crate::source_code::SourceCodeSlice;
-use crate::TagKind;
+use crate::{TabWidth, TagKind};
 use ruff_text_size::TextSize;
 
 /// Language agnostic IR for formatting source code.
@@ -31,20 +33,23 @@ pub enum FormatElement {
     SourcePosition(TextSize),
 
     /// Token constructed by the formatter from a static string
-    StaticText { text: &'static str },
+    StaticText {
+        text: &'static str,
+        text_width: TextWidth,
+    },
 
     /// Token constructed from the input source as a dynamic
     /// string.
     DynamicText {
         /// There's no need for the text to be mutable, using `Box<str>` safes 8 bytes over `String`.
         text: Box<str>,
+        text_width: TextWidth,
     },
 
     /// Text that gets emitted as it is in the source code. Optimized to avoid any allocations.
     SourceCodeSlice {
         slice: SourceCodeSlice,
-        /// Whether the string contains any new line characters
-        contains_newlines: bool,
+        text_width: TextWidth,
     },
 
     /// Prevents that line suffixes move past this boundary. Forces the printer to print any pending
@@ -69,19 +74,18 @@ impl std::fmt::Debug for FormatElement {
             FormatElement::Space => write!(fmt, "Space"),
             FormatElement::Line(mode) => fmt.debug_tuple("Line").field(mode).finish(),
             FormatElement::ExpandParent => write!(fmt, "ExpandParent"),
-            FormatElement::StaticText { text } => {
-                fmt.debug_tuple("StaticText").field(text).finish()
-            }
+            FormatElement::StaticText { text, text_width } => fmt
+                .debug_tuple("StaticText")
+                .field(text)
+                .field(text_width)
+                .finish(),
             FormatElement::DynamicText { text, .. } => {
                 fmt.debug_tuple("DynamicText").field(text).finish()
             }
-            FormatElement::SourceCodeSlice {
-                slice,
-                contains_newlines,
-            } => fmt
+            FormatElement::SourceCodeSlice { slice, text_width } => fmt
                 .debug_tuple("Text")
                 .field(slice)
-                .field(contains_newlines)
+                .field(text_width)
                 .finish(),
             FormatElement::LineSuffixBoundary => write!(fmt, "LineSuffixBoundary"),
             FormatElement::BestFitting { variants } => fmt
@@ -256,11 +260,12 @@ impl FormatElements for FormatElement {
             FormatElement::ExpandParent => true,
             FormatElement::Tag(Tag::StartGroup(group)) => !group.mode().is_flat(),
             FormatElement::Line(line_mode) => matches!(line_mode, LineMode::Hard | LineMode::Empty),
-            FormatElement::StaticText { text } => text.contains('\n'),
+            FormatElement::StaticText {
+                text: _,
+                text_width,
+            } => text_width.is_multiline(),
             FormatElement::DynamicText { text, .. } => text.contains('\n'),
-            FormatElement::SourceCodeSlice {
-                contains_newlines, ..
-            } => *contains_newlines,
+            FormatElement::SourceCodeSlice { text_width, .. } => text_width.is_multiline(),
             FormatElement::Interned(interned) => interned.will_break(),
             // Traverse into the most flat version because the content is guaranteed to expand when even
             // the most flat version contains some content that forces a break.
@@ -378,6 +383,46 @@ pub trait FormatElements {
     /// Returns the end tag if:
     /// - the last element is an end tag of `kind`
     fn end_tag(&self, kind: TagKind) -> Option<&Tag>;
+}
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub enum TextWidth {
+    Width(NonZeroU32),
+    Multiline,
+}
+
+impl TextWidth {
+    pub(crate) const fn new_width(width: u32) -> Self {
+        // SAFETY: 1 + x is guaranteed to be non zero
+        #[allow(unsafe_code)]
+        TextWidth::Width(unsafe { NonZeroU32::new_unchecked(width.saturating_add(1)) })
+    }
+
+    pub(crate) fn from_text(text: &str, tab_width: TabWidth) -> TextWidth {
+        let mut width = 0u32;
+
+        for c in text.chars() {
+            let char_width = match c {
+                '\t' => tab_width.value(),
+                '\n' => return TextWidth::Multiline,
+                c => c.width().unwrap_or(0) as u32,
+            };
+            width += char_width as u32;
+        }
+
+        Self::new_width(width)
+    }
+
+    pub(crate) const fn width(self) -> Option<u32> {
+        match self {
+            TextWidth::Width(width) => Some(width.get() - 1),
+            TextWidth::Multiline => None,
+        }
+    }
+
+    pub(crate) const fn is_multiline(self) -> bool {
+        matches!(self, TextWidth::Multiline)
+    }
 }
 
 #[cfg(test)]
