@@ -51,6 +51,9 @@ use crate::{
 mod cursor;
 mod indentation;
 
+/// Maximum nesting level of f-string expressions.
+const MAX_FSTRING_EXPRESSION_NESTING: u32 = 3;
+
 /// A lexer for Python source code.
 pub struct Lexer<'source> {
     // Contains the source code to be lexed.
@@ -65,6 +68,8 @@ pub struct Lexer<'source> {
     pending_indentation: Option<Indentation>,
     // Lexer mode.
     mode: Mode,
+
+    fstring_stack: Vec<FStringContext>,
 }
 
 /// Contains a Token along with its `range`.
@@ -157,6 +162,7 @@ impl<'source> Lexer<'source> {
             source: input,
             cursor: Cursor::new(input),
             mode,
+            fstring_stack: vec![],
         };
         // TODO: Handle possible mismatch between BOM and explicit encoding declaration.
         // spell-checker:ignore feff
@@ -508,6 +514,138 @@ impl<'source> Lexer<'source> {
         }
     }
 
+    /// Lex a f-string start token.
+    fn lex_fstring_start(&mut self, quote: char, triple_quoted: bool, is_raw_string: bool) -> Tok {
+        let quote_size = if triple_quoted {
+            StringQuoteSize::Triple
+        } else {
+            StringQuoteSize::Single
+        };
+        // SAFETY: Safe because `quote` is either `'` or `"`
+        let quote_char = StringQuoteChar::try_from(quote).unwrap();
+        self.fstring_stack
+            .push(FStringContext::new(quote_char, quote_size, is_raw_string));
+        Tok::FStringStart
+    }
+
+    fn try_lex_fstring_middle(&mut self) -> Result<Option<Tok>, LexicalError> {
+        let mut in_named_unicode = false;
+
+        // SAFETY: Safe because the function is only called when `self.fstring_stack` is not empty.
+        let context = self.fstring_stack.last().unwrap();
+
+        let value_start = self.offset();
+        let value_end = loop {
+            match self.cursor.first() {
+                EOF_CHAR => {
+                    return Err(LexicalError {
+                        error: LexicalErrorType::FStringError(if context.allow_multiline() {
+                            FStringErrorType::UnterminatedTripleQuotedString
+                        } else {
+                            FStringErrorType::UnterminatedString
+                        }),
+                        location: self.offset(),
+                    });
+                }
+                '\n' if !context.allow_multiline() => {
+                    return Err(LexicalError {
+                        error: LexicalErrorType::FStringError(FStringErrorType::UnterminatedString),
+                        location: self.offset(),
+                    })
+                }
+                '\\' => {
+                    self.cursor.bump();
+                    if matches!(self.cursor.first(), '{' | '}') {
+                        // Don't consume `{` or `}` as we want them to be consumed as tokens.
+                        break self.offset() - TextSize::new(1);
+                    } else if !context.is_raw_string {
+                        if self.cursor.first() == 'N' && self.cursor.second() == '{' {
+                            self.cursor.bump();
+                            self.cursor.bump();
+                            in_named_unicode = true;
+                        }
+                    }
+                }
+                quote @ ('\'' | '"') => {
+                    if quote == context.quote_char() {
+                        match context.quote_size() {
+                            StringQuoteSize::Single => {
+                                break self.offset();
+                            }
+                            StringQuoteSize::Triple => {
+                                let mut remaining = self.cursor.rest().chars().clone();
+                                if remaining.next() == Some(quote)
+                                    && remaining.next() == Some(quote)
+                                {
+                                    break self.offset();
+                                }
+                            }
+                        }
+                    }
+                }
+                '{' => {
+                    if self.cursor.second() == '{' {
+                        self.cursor.bump();
+                        self.cursor.bump();
+                    } else {
+                        break self.offset();
+                    }
+                }
+                '}' => {
+                    if in_named_unicode {
+                        in_named_unicode = false;
+                        self.cursor.bump();
+                    } else if self.cursor.second() == '}' && !context.is_in_format_spec() {
+                        self.cursor.bump();
+                        self.cursor.bump();
+                    } else {
+                        break self.offset();
+                    }
+                }
+                _ => {
+                    self.cursor.bump();
+                }
+            }
+        };
+
+        if value_start == value_end {
+            return Ok(None);
+        }
+
+        let value = self.source[TextRange::new(value_start, value_end)]
+            .to_string()
+            .replace("{{", "{")
+            .replace("}}", "}");
+        Ok(Some(Tok::FStringMiddle(value)))
+    }
+
+    fn try_lex_fstring_end(&mut self) -> Option<Tok> {
+        // SAFETY: Safe because the function is only called when `self.fstring_stack` is not empty.
+        let context = self.fstring_stack.last().unwrap();
+
+        if let quote @ ('\'' | '"') = self.cursor.first() {
+            if quote == context.quote_char() {
+                match context.quote_size() {
+                    StringQuoteSize::Single => {
+                        self.cursor.bump();
+                        return Some(Tok::FStringEnd);
+                    }
+                    StringQuoteSize::Triple => {
+                        let mut remaining = self.cursor.rest().chars().clone();
+                        if remaining.next() == Some(quote) && remaining.next() == Some(quote) {
+                            self.cursor.bump();
+                            self.cursor.bump();
+                            self.cursor.bump();
+                            return Some(Tok::FStringEnd);
+                        }
+                    }
+                }
+            }
+        }
+
+        None
+    }
+
     /// Lex a string literal.
     fn lex_string(&mut self, kind: StringKind, quote: char) -> Result<Tok, LexicalError> {
         #[cfg(debug_assertions)]
@@ -516,6 +654,10 @@ impl<'source> Lexer<'source> {
         // If the next two characters are also the quote character, then we have a triple-quoted
         // string; consume those two characters and ensure that we require a triple-quote to close
         let triple_quoted = self.cursor.eat_char2(quote, quote);
+
+        if kind.is_any_fstring() {
+            return Ok(self.lex_fstring_start(quote, triple_quoted, kind.is_raw()));
+        }
 
         let value_start = self.offset();
 
@@ -571,6 +713,19 @@ impl<'source> Lexer<'source> {
     // This is the main entry point. Call this function to retrieve the next token.
     // This function is used by the iterator implementation.
     pub fn next_token(&mut self) -> LexResult {
+        if let Some(fstring_context) = self.fstring_stack.last() {
+            if !fstring_context.is_in_expression() {
+                self.cursor.start_token();
+                if let Some(tok) = self.try_lex_fstring_middle()? {
+                    return Ok((tok, self.token_range()));
+                }
+                if let Some(tok) = self.try_lex_fstring_end() {
+                    self.fstring_stack.pop();
+                    return Ok((tok, self.token_range()));
+                }
+            }
+        }
+
         // Return dedent tokens until the current indentation level matches the indentation of the next token.
         if let Some(indentation) = self.pending_indentation.take() {
             if let Ok(Ordering::Greater) = self.indentations.current().try_compare(indentation) {
@@ -841,10 +996,7 @@ impl<'source> Lexer<'source> {
                 if self.cursor.eat_char('=') {
                     Tok::NotEqual
                 } else {
-                    return Err(LexicalError {
-                        error: LexicalErrorType::UnrecognizedToken { tok: '!' },
-                        location: self.token_start(),
-                    });
+                    Tok::Exclamation
                 }
             }
             '~' => Tok::Tilde,
@@ -865,15 +1017,41 @@ impl<'source> Lexer<'source> {
                 Tok::Rsqb
             }
             '{' => {
+                if let Some(fstring_context) = self.fstring_stack.last_mut() {
+                    fstring_context.open_curly_braces();
+                    if fstring_context.is_nested_too_deeply() {
+                        return Err(LexicalError {
+                            error: LexicalErrorType::FStringError(
+                                FStringErrorType::ExpressionNestedTooDeeply,
+                            ),
+                            location: self.token_start(),
+                        });
+                    }
+                }
                 self.nesting += 1;
                 Tok::Lbrace
             }
             '}' => {
+                if let Some(fstring_context) = self.fstring_stack.last_mut() {
+                    if !fstring_context.has_open_curly_braces() {
+                        return Err(LexicalError {
+                            error: LexicalErrorType::FStringError(FStringErrorType::SingleRbrace),
+                            location: self.token_start(),
+                        });
+                    }
+                    fstring_context.close_curly_braces();
+                }
                 self.nesting = self.nesting.saturating_sub(1);
                 Tok::Rbrace
             }
             ':' => {
-                if self.cursor.eat_char('=') {
+                if self
+                    .fstring_stack
+                    .last_mut()
+                    .is_some_and(FStringContext::is_valid_format_spec_position)
+                {
+                    Tok::Colon
+                } else if self.cursor.eat_char('=') {
                     Tok::ColonEqual
                 } else {
                     Tok::Colon
@@ -1102,6 +1280,108 @@ impl std::fmt::Display for LexicalErrorType {
             }
             LexicalErrorType::Eof => write!(f, "unexpected EOF while parsing"),
             LexicalErrorType::OtherError(msg) => write!(f, "{msg}"),
+        }
+    }
+}
+
+#[derive(Debug)]
+enum StringQuoteChar {
+    Single,
+    Double,
+}
+
+impl TryFrom<char> for StringQuoteChar {
+    type Error = String;
+
+    fn try_from(c: char) -> Result<Self, Self::Error> {
+        match c {
+            '\'' => Ok(Self::Single),
+            '"' => Ok(Self::Double),
+            _ => Err(format!("Invalid string quote character: {c}")),
+        }
+    }
+}
+
+impl StringQuoteChar {
+    const fn as_char(&self) -> char {
+        match self {
+            Self::Single => '\'',
+            Self::Double => '"',
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum StringQuoteSize {
+    Single,
+    Triple,
+}
+
+#[derive(Debug)]
+struct FStringContext {
+    quote_char: StringQuoteChar,
+    quote_size: StringQuoteSize,
+    curly_braces_count: u32,
+    format_spec_count: u32,
+    is_raw_string: bool,
+}
+
+impl FStringContext {
+    fn new(quote_char: StringQuoteChar, quote_size: StringQuoteSize, is_raw_string: bool) -> Self {
+        Self {
+            quote_char,
+            quote_size,
+            curly_braces_count: 0,
+            format_spec_count: 0,
+            is_raw_string,
+        }
+    }
+
+    fn quote_char(&self) -> char {
+        self.quote_char.as_char()
+    }
+
+    fn quote_size(&self) -> StringQuoteSize {
+        self.quote_size
+    }
+
+    fn allow_multiline(&self) -> bool {
+        matches!(self.quote_size, StringQuoteSize::Triple)
+    }
+
+    fn is_nested_too_deeply(&self) -> bool {
+        self.curly_braces_count > MAX_FSTRING_EXPRESSION_NESTING
+    }
+
+    fn has_open_curly_braces(&mut self) -> bool {
+        self.curly_braces_count > 0
+    }
+
+    fn open_curly_braces(&mut self) {
+        self.curly_braces_count += 1;
+    }
+
+    fn close_curly_braces(&mut self) {
+        if self.is_in_format_spec() {
+            self.format_spec_count = self.format_spec_count.saturating_sub(1);
+        }
+        self.curly_braces_count = self.curly_braces_count.saturating_sub(1);
+    }
+
+    fn is_in_expression(&self) -> bool {
+        self.curly_braces_count > self.format_spec_count
+    }
+
+    fn is_in_format_spec(&self) -> bool {
+        self.format_spec_count > 0 && !self.is_in_expression()
+    }
+
+    fn is_valid_format_spec_position(&mut self) -> bool {
+        if self.curly_braces_count - self.format_spec_count == 1 {
+            self.format_spec_count += 1;
+            true
+        } else {
+            false
         }
     }
 }

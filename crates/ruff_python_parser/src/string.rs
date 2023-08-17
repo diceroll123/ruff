@@ -736,6 +736,8 @@ pub enum FStringErrorType {
     // TODO: Test this case.
     /// Unterminated string.
     UnterminatedString,
+    /// Unterminated triple-quoted string.
+    UnterminatedTripleQuotedString,
 }
 
 impl std::fmt::Display for FStringErrorType {
@@ -743,7 +745,7 @@ impl std::fmt::Display for FStringErrorType {
         use FStringErrorType::{
             EmptyExpression, ExpressionCannotInclude, ExpressionNestedTooDeeply,
             InvalidConversionFlag, InvalidExpression, MismatchedDelimiter, SingleRbrace,
-            UnclosedLbrace, Unmatched, UnterminatedString,
+            UnclosedLbrace, Unmatched, UnterminatedString, UnterminatedTripleQuotedString
         };
         match self {
             UnclosedLbrace => write!(f, "expecting '}}'"),
@@ -763,6 +765,9 @@ impl std::fmt::Display for FStringErrorType {
             }
             UnterminatedString => {
                 write!(f, "unterminated string")
+            }
+            UnterminatedTripleQuotedString => {
+                write!(f, "unterminated triple-quoted string")
             }
             ExpressionCannotInclude(c) => {
                 if *c == '\\' {
