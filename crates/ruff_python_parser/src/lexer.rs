@@ -566,19 +566,15 @@ impl<'source> Lexer<'source> {
                         }
                     }
                 }
-                quote @ ('\'' | '"') => {
-                    if quote == context.quote_char() {
-                        match context.quote_size() {
-                            StringQuoteSize::Single => {
+                quote @ ('\'' | '"') if quote == context.quote_char() => {
+                    match context.quote_size() {
+                        StringQuoteSize::Single => {
+                            break self.offset();
+                        }
+                        StringQuoteSize::Triple => {
+                            let mut remaining = self.cursor.rest().chars();
+                            if remaining.next() == Some(quote) && remaining.next() == Some(quote) {
                                 break self.offset();
-                            }
-                            StringQuoteSize::Triple => {
-                                let mut remaining = self.cursor.rest().chars().clone();
-                                if remaining.next() == Some(quote)
-                                    && remaining.next() == Some(quote)
-                                {
-                                    break self.offset();
-                                }
                             }
                         }
                     }
@@ -631,7 +627,7 @@ impl<'source> Lexer<'source> {
                         return Some(Tok::FStringEnd);
                     }
                     StringQuoteSize::Triple => {
-                        let mut remaining = self.cursor.rest().chars().clone();
+                        let mut remaining = self.cursor.rest().chars();
                         if remaining.next() == Some(quote) && remaining.next() == Some(quote) {
                             self.cursor.bump();
                             self.cursor.bump();
