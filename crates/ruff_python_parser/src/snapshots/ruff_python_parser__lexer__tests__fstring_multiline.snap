@@ -1,0 +1,37 @@
+---
+source: crates/ruff_python_parser/src/lexer.rs
+expression: lex_source(source)
+---
+[
+    FStringStart,
+    FStringMiddle(
+        "\nhello\n    world\n",
+    ),
+    FStringEnd,
+    FStringStart,
+    FStringMiddle(
+        "\n    world\nhello\n",
+    ),
+    FStringEnd,
+    FStringStart,
+    FStringMiddle(
+        "some ",
+    ),
+    Lbrace,
+    FStringStart,
+    FStringMiddle(
+        "multiline\nallowed ",
+    ),
+    Lbrace,
+    Name {
+        name: "x",
+    },
+    Rbrace,
+    FStringEnd,
+    Rbrace,
+    FStringMiddle(
+        " string",
+    ),
+    FStringEnd,
+    Newline,
+]

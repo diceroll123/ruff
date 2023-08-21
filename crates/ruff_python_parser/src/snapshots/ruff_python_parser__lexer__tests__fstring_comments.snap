@@ -1,0 +1,25 @@
+---
+source: crates/ruff_python_parser/src/lexer.rs
+expression: lex_source(source)
+---
+[
+    FStringStart,
+    FStringMiddle(
+        "\n# not a comment ",
+    ),
+    Lbrace,
+    Comment(
+        "# comment {",
+    ),
+    NonLogicalNewline,
+    Name {
+        name: "x",
+    },
+    NonLogicalNewline,
+    Rbrace,
+    FStringMiddle(
+        " # not a comment\n",
+    ),
+    FStringEnd,
+    Newline,
+]

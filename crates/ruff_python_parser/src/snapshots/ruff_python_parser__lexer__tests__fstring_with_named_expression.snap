@@ -1,0 +1,64 @@
+---
+source: crates/ruff_python_parser/src/lexer.rs
+expression: lex_source(source)
+---
+[
+    FStringStart,
+    Lbrace,
+    Name {
+        name: "x",
+    },
+    Colon,
+    FStringMiddle(
+        "=10",
+    ),
+    Rbrace,
+    FStringMiddle(
+        " ",
+    ),
+    Lbrace,
+    Lpar,
+    Name {
+        name: "x",
+    },
+    ColonEqual,
+    Int {
+        value: 10,
+    },
+    Rpar,
+    Rbrace,
+    FStringMiddle(
+        " ",
+    ),
+    Lbrace,
+    Name {
+        name: "x",
+    },
+    Comma,
+    Lbrace,
+    Name {
+        name: "y",
+    },
+    ColonEqual,
+    Int {
+        value: 10,
+    },
+    Rbrace,
+    Rbrace,
+    FStringMiddle(
+        " ",
+    ),
+    Lbrace,
+    Lsqb,
+    Name {
+        name: "x",
+    },
+    ColonEqual,
+    Int {
+        value: 10,
+    },
+    Rsqb,
+    Rbrace,
+    FStringEnd,
+    Newline,
+]

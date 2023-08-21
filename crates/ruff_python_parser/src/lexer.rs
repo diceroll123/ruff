@@ -551,17 +551,20 @@ impl<'source> Lexer<'source> {
                     })
                 }
                 '\\' => {
-                    self.cursor.bump();
+                    self.cursor.bump(); // '\'
                     if matches!(self.cursor.first(), '{' | '}') {
                         // Don't consume `{` or `}` as we want them to be consumed as tokens.
                         break;
                     } else if !context.is_raw_string {
                         if self.cursor.first() == 'N' && self.cursor.second() == '{' {
-                            self.cursor.bump();
-                            self.cursor.bump();
+                            self.cursor.bump(); // 'N'
+                            self.cursor.bump(); // '{'
                             in_named_unicode = true;
+                            continue;
                         }
                     }
+                    // Consume the escaped character.
+                    self.cursor.bump();
                 }
                 quote @ ('\'' | '"') if quote == context.quote_char() => match context.quote_size {
                     StringQuoteSize::Single => break,
@@ -1371,7 +1374,7 @@ impl FStringContext {
     }
 
     /// Returns `true` if the colon (`:`) for the current f-string is in a valid
-    /// position i.e., at the same level of nesting as the opening parenthese token.
+    /// position i.e., at the same level of nesting as the opening parentheses token.
     /// Increments the number of format specs if it is.
     fn is_valid_format_spec_position(&mut self) -> bool {
         if self.parentheses_count - self.format_spec_count == 1 {
@@ -1956,5 +1959,106 @@ def f(arg=%timeit a = b):
     fn test_infite_loop() {
         let source = "[1";
         let _ = lex(source, Mode::Module).collect::<Vec<_>>();
+    }
+
+    #[test]
+    fn test_empty_fstrings() {
+        let source = r#"f"" "" F"" f'' '' f"""""" f''''''"#;
+        assert_debug_snapshot!(lex_source(source));
+    }
+
+    #[test]
+    fn test_fstring() {
+        let source = r#"f"normal {foo} {{another}} {bar} {{{three}}}""#;
+        assert_debug_snapshot!(lex_source(source));
+    }
+
+    #[test]
+    fn test_fstring_escape() {
+        let source = r#"f"\{x:\"\{x}} \"\"\
+ end""#;
+        assert_debug_snapshot!(lex_source(source));
+    }
+
+    #[test]
+    fn test_fstring_escape_raw() {
+        let source = r#"rf"\{x:\"\{x}} \"\"\
+ end""#;
+        assert_debug_snapshot!(lex_source(source));
+    }
+
+    #[test]
+    fn test_fstring_named_unicode() {
+        let source = r#"f"\N{BULLET} normal""#;
+        assert_debug_snapshot!(lex_source(source));
+    }
+
+    #[test]
+    fn test_fstring_named_unicode_raw() {
+        let source = r#"rf"\N{BULLET} normal""#;
+        assert_debug_snapshot!(lex_source(source));
+    }
+
+    #[test]
+    fn test_fstring_with_named_expression() {
+        let source = r#"f"{x:=10} {(x:=10)} {x,{y:=10}} {[x:=10]}""#;
+        assert_debug_snapshot!(lex_source(source));
+    }
+
+    #[test]
+    fn test_fstring_with_format_spec() {
+        let source = r#"f"{foo:} {x=!s:.3f} {x:.{y}f} {'':*^{1:{1}}}""#;
+        assert_debug_snapshot!(lex_source(source));
+    }
+
+    #[test]
+    fn test_fstring_conversion() {
+        let source = r#"f"{x!s} {x=!r} {x:.3f!r} {{x!r}}""#;
+        assert_debug_snapshot!(lex_source(source));
+    }
+
+    #[test]
+    fn test_fstring_nested() {
+        let source = r#"f"foo {f"bar {x + f"{wow}"}"} baz" f'foo {f'bar'} some {f"another"}'"#;
+        assert_debug_snapshot!(lex_source(source));
+    }
+
+    #[test]
+    fn test_fstring_expression_multiline() {
+        let source = r#"f"first {
+    x
+        *
+            y
+} second""#;
+        assert_debug_snapshot!(lex_source(source));
+    }
+
+    #[test]
+    fn test_fstring_multiline() {
+        let source = r#"f"""
+hello
+    world
+""" f'''
+    world
+hello
+''' f"some {f"""multiline
+allowed {x}"""} string""#;
+        assert_debug_snapshot!(lex_source(source));
+    }
+
+    #[test]
+    fn test_fstring_comments() {
+        let source = r#"f"""
+# not a comment { # comment {
+    x
+} # not a comment
+""""#;
+        assert_debug_snapshot!(lex_source(source));
+    }
+
+    #[test]
+    fn test_fstring_with_ipy_escape_command() {
+        let source = r#"f"foo {!pwd} bar""#;
+        assert_debug_snapshot!(lex_source(source));
     }
 }
