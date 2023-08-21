@@ -8,14 +8,15 @@ use std::fs::Permissions;
 use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 #[cfg(unix)]
 use std::path::Path;
+use std::process::Command;
 use std::str;
 
 #[cfg(unix)]
 use anyhow::Context;
 use anyhow::Result;
-use assert_cmd::Command;
 #[cfg(unix)]
 use clap::Parser;
+use insta_cmd::{assert_cmd_snapshot, get_cargo_bin};
 #[cfg(unix)]
 use path_absolutize::path_dedot;
 #[cfg(unix)]
@@ -27,106 +28,53 @@ use ruff_cli::args::Args;
 use ruff_cli::run;
 
 const BIN_NAME: &str = "ruff";
+const STDIN_BASE_OPTIONS: &[&str] = &["-", "--format", "text", "--isolated", "--no-cache"];
 
 #[test]
-fn stdin_success() -> Result<()> {
-    let mut cmd = Command::cargo_bin(BIN_NAME)?;
-    cmd.args(["-", "--format", "text", "--isolated"])
-        .write_stdin("")
-        .assert()
-        .success();
-    Ok(())
+fn stdin_success() {
+    assert_cmd_snapshot!(Command::new(get_cargo_bin(BIN_NAME))
+        .args(STDIN_BASE_OPTIONS)
+        .pass_stdin(""));
 }
 
 #[test]
-fn stdin_error() -> Result<()> {
-    let mut cmd = Command::cargo_bin(BIN_NAME)?;
-    let output = cmd
-        .args(["-", "--format", "text", "--isolated"])
-        .write_stdin("import os\n")
-        .assert()
-        .failure();
-    assert_eq!(
-        str::from_utf8(&output.get_output().stdout)?,
-        r#"-:1:8: F401 [*] `os` imported but unused
-Found 1 error.
-[*] 1 potentially fixable with the --fix option.
-"#
-    );
-    Ok(())
+fn stdin_error() {
+    assert_cmd_snapshot!(Command::new(get_cargo_bin(BIN_NAME))
+        .args(STDIN_BASE_OPTIONS)
+        .pass_stdin("import os\n"));
 }
 
 #[test]
-fn stdin_filename() -> Result<()> {
-    let mut cmd = Command::cargo_bin(BIN_NAME)?;
-    let output = cmd
-        .args([
-            "-",
-            "--format",
-            "text",
-            "--stdin-filename",
-            "F401.py",
-            "--isolated",
-        ])
-        .write_stdin("import os\n")
-        .assert()
-        .failure();
-    assert_eq!(
-        str::from_utf8(&output.get_output().stdout)?,
-        r#"F401.py:1:8: F401 [*] `os` imported but unused
-Found 1 error.
-[*] 1 potentially fixable with the --fix option.
-"#
-    );
-    Ok(())
+fn stdin_filename() {
+    assert_cmd_snapshot!(Command::new(get_cargo_bin(BIN_NAME))
+        .args(STDIN_BASE_OPTIONS)
+        .args(["--stdin-filename", "F401.py"])
+        .pass_stdin("import os\n"));
 }
 
 #[test]
-fn stdin_source_type() -> Result<()> {
-    // Raise `TCH` errors in `.py` files.
-    let mut cmd = Command::cargo_bin(BIN_NAME)?;
-    let output = cmd
-        .args([
-            "-",
-            "--format",
-            "text",
-            "--stdin-filename",
-            "TCH.py",
-            "--isolated",
-        ])
-        .write_stdin("import os\n")
-        .assert()
-        .failure();
-    assert_eq!(
-        str::from_utf8(&output.get_output().stdout)?,
-        r#"TCH.py:1:8: F401 [*] `os` imported but unused
-Found 1 error.
-[*] 1 potentially fixable with the --fix option.
-"#
-    );
+/// Raise `TCH` errors in `.py` files ...
+fn stdin_source_type_py() {
+    assert_cmd_snapshot!(Command::new(get_cargo_bin(BIN_NAME))
+        .args(STDIN_BASE_OPTIONS)
+        .args(["--stdin-filename", "TCH.py"])
+        .pass_stdin("import os\n"));
+}
 
-    // But not in `.pyi` files.
-    let mut cmd = Command::cargo_bin(BIN_NAME)?;
-    cmd.args([
-        "-",
-        "--format",
-        "text",
-        "--stdin-filename",
-        "TCH.pyi",
-        "--isolated",
-        "--select",
-        "TCH",
-    ])
-    .write_stdin("import os\n")
-    .assert()
-    .success();
-    Ok(())
+/// ... but not in `.pyi` files.
+#[test]
+fn stdin_source_type_pyi() {
+    let args = ["--stdin-filename", "TCH.pyi", "--select", "TCH"];
+    assert_cmd_snapshot!(Command::new(get_cargo_bin(BIN_NAME))
+        .args(STDIN_BASE_OPTIONS)
+        .args(args)
+        .pass_stdin("import os\n"));
 }
 
 #[cfg(unix)]
 #[test]
 fn stdin_json() -> Result<()> {
-    let mut cmd = Command::cargo_bin(BIN_NAME)?;
+    let mut cmd = assert_cmd::Command::cargo_bin(BIN_NAME)?;
     let output = cmd
         .args([
             "-",
@@ -188,7 +136,7 @@ fn stdin_json() -> Result<()> {
 
 #[test]
 fn stdin_autofix() -> Result<()> {
-    let mut cmd = Command::cargo_bin(BIN_NAME)?;
+    let mut cmd = assert_cmd::Command::cargo_bin(BIN_NAME)?;
     let output = cmd
         .args(["-", "--format", "text", "--fix", "--isolated"])
         .write_stdin("import os\nimport sys\n\nprint(sys.version)\n")
@@ -203,7 +151,7 @@ fn stdin_autofix() -> Result<()> {
 
 #[test]
 fn stdin_autofix_when_not_fixable_should_still_print_contents() -> Result<()> {
-    let mut cmd = Command::cargo_bin(BIN_NAME)?;
+    let mut cmd = assert_cmd::Command::cargo_bin(BIN_NAME)?;
     let output = cmd
         .args(["-", "--format", "text", "--fix", "--isolated"])
         .write_stdin("import os\nimport sys\n\nif (1, 2):\n     print(sys.version)\n")
@@ -218,7 +166,7 @@ fn stdin_autofix_when_not_fixable_should_still_print_contents() -> Result<()> {
 
 #[test]
 fn stdin_autofix_when_no_issues_should_still_print_contents() -> Result<()> {
-    let mut cmd = Command::cargo_bin(BIN_NAME)?;
+    let mut cmd = assert_cmd::Command::cargo_bin(BIN_NAME)?;
     let output = cmd
         .args(["-", "--format", "text", "--fix", "--isolated"])
         .write_stdin("import sys\n\nprint(sys.version)\n")
@@ -233,7 +181,7 @@ fn stdin_autofix_when_no_issues_should_still_print_contents() -> Result<()> {
 
 #[test]
 fn show_source() -> Result<()> {
-    let mut cmd = Command::cargo_bin(BIN_NAME)?;
+    let mut cmd = assert_cmd::Command::cargo_bin(BIN_NAME)?;
     let output = cmd
         .args(["-", "--format", "text", "--show-source", "--isolated"])
         .write_stdin("l = 1")
@@ -245,16 +193,16 @@ fn show_source() -> Result<()> {
 
 #[test]
 fn explain_status_codes() -> Result<()> {
-    let mut cmd = Command::cargo_bin(BIN_NAME)?;
+    let mut cmd = assert_cmd::Command::cargo_bin(BIN_NAME)?;
     cmd.args(["--explain", "F401"]).assert().success();
-    let mut cmd = Command::cargo_bin(BIN_NAME)?;
+    let mut cmd = assert_cmd::Command::cargo_bin(BIN_NAME)?;
     cmd.args(["--explain", "RUF404"]).assert().failure();
     Ok(())
 }
 
 #[test]
 fn show_statistics() -> Result<()> {
-    let mut cmd = Command::cargo_bin(BIN_NAME)?;
+    let mut cmd = assert_cmd::Command::cargo_bin(BIN_NAME)?;
     let output = cmd
         .args([
             "-",
@@ -280,7 +228,7 @@ fn show_statistics() -> Result<()> {
 
 #[test]
 fn nursery_prefix() -> Result<()> {
-    let mut cmd = Command::cargo_bin(BIN_NAME)?;
+    let mut cmd = assert_cmd::Command::cargo_bin(BIN_NAME)?;
 
     // `--select E` should detect E741, but not E225, which is in the nursery.
     let output = cmd
@@ -300,7 +248,7 @@ Found 1 error.
 
 #[test]
 fn nursery_all() -> Result<()> {
-    let mut cmd = Command::cargo_bin(BIN_NAME)?;
+    let mut cmd = assert_cmd::Command::cargo_bin(BIN_NAME)?;
 
     // `--select ALL` should detect E741, but not E225, which is in the nursery.
     let output = cmd
@@ -320,7 +268,7 @@ Found 1 error.
 
 #[test]
 fn nursery_direct() -> Result<()> {
-    let mut cmd = Command::cargo_bin(BIN_NAME)?;
+    let mut cmd = assert_cmd::Command::cargo_bin(BIN_NAME)?;
 
     // `--select E225` should detect E225.
     let output = cmd
@@ -376,7 +324,7 @@ fn unreadable_dir() -> Result<()> {
 
     // We (currently?) have to use a subcommand to check exit status (currently wrong) and logging
     // output
-    let mut cmd = Command::cargo_bin(BIN_NAME)?;
+    let mut cmd = assert_cmd::Command::cargo_bin(BIN_NAME)?;
     let output = cmd
         .args(["--no-cache", "--isolated"])
         .arg(&unreadable_dir)

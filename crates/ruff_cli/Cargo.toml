@@ -61,6 +61,7 @@ similar = { workspace = true }
 strum = { workspace = true, features = [] }
 walkdir = { version = "2.3.2" }
 wild = { version = "2" }
+insta-cmd = { git = "https://github.com/mitsuhiko/insta-cmd", rev = "fb74f1018a8de13cf23e4512db5c4fd9918715c1" }
 
 [dev-dependencies]
 assert_cmd = { version = "2.0.8" }

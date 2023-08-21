@@ -1095,9 +1095,20 @@ dependencies = [
  "lazy_static",
  "linked-hash-map",
  "regex",
+ "serde",
  "similar",
  "walkdir",
  "yaml-rust",
+]
+
+[[package]]
+name = "insta-cmd"
+version = "0.3.0"
+source = "git+https://github.com/mitsuhiko/insta-cmd?rev=fb74f1018a8de13cf23e4512db5c4fd9918715c1#fb74f1018a8de13cf23e4512db5c4fd9918715c1"
+dependencies = [
+ "insta",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -2182,6 +2193,7 @@ dependencies = [
  "glob",
  "ignore",
  "insta",
+ "insta-cmd",
  "itertools",
  "itoa",
  "log",
