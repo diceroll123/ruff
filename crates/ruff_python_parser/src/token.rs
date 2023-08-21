@@ -44,11 +44,13 @@ pub enum Tok {
         /// Whether the string is triple quoted.
         triple_quoted: bool,
     },
-    /// Token value for the start of an f-string.
+    /// Token value for the start of an f-string. This includes the `f`/`F`/`fr` prefix
+    /// and the opening quote(s).
     FStringStart,
-    /// Token value for the middle of an f-string.
+    /// Token value that includes the portion of text inside the f-string that's not
+    /// part of the expression part and isn't an opening or closing brace.
     FStringMiddle(String),
-    /// Token value for the end of an f-string.
+    /// Token value for the end of an f-string. This includes the closing quote.
     FStringEnd,
     /// Token value for IPython escape commands. These are recognized by the lexer
     /// only when the mode is [`Mode::Jupyter`].
@@ -242,9 +244,9 @@ impl fmt::Display for Tok {
                 let quotes = "\"".repeat(if *triple_quoted { 3 } else { 1 });
                 write!(f, "{kind}{quotes}{value}{quotes}")
             }
-            FStringStart => todo!(),
-            FStringMiddle(_) => todo!(),
-            FStringEnd => todo!(),
+            FStringStart => f.write_str("FStringStart"),
+            FStringMiddle(value) => f.write_str(value),
+            FStringEnd => f.write_str("FStringEnd"),
             IpyEscapeCommand { kind, value } => write!(f, "{kind}{value}"),
             Newline => f.write_str("Newline"),
             NonLogicalNewline => f.write_str("NonLogicalNewline"),
@@ -462,8 +464,13 @@ pub enum TokenKind {
     Complex,
     /// Token value for a string.
     String,
+    /// Token value for the start of an f-string. This includes the `f`/`F`/`fr` prefix
+    /// and the opening quote(s).
     FStringStart,
+    /// Token value that includes the portion of text inside the f-string that's not
+    /// part of the expression part and isn't an opening or closing brace.
     FStringMiddle,
+    /// Token value for the end of an f-string. This includes the closing quote.
     FStringEnd,
     /// Token value for a IPython escape command.
     EscapeCommand,
