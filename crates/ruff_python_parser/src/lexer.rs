@@ -51,9 +51,6 @@ use crate::{
 mod cursor;
 mod indentation;
 
-/// Maximum nesting level of f-string expressions.
-const MAX_FSTRING_EXPRESSION_NESTING: u32 = 3;
-
 /// A lexer for Python source code.
 pub struct Lexer<'source> {
     // Contains the source code to be lexed.
@@ -528,14 +525,14 @@ impl<'source> Lexer<'source> {
         Tok::FStringStart
     }
 
-    fn try_lex_fstring_middle(&mut self) -> Result<Option<Tok>, LexicalError> {
+    fn maybe_lex_fstring_middle(&mut self) -> Result<Option<Tok>, LexicalError> {
         let mut in_named_unicode = false;
 
         // SAFETY: Safe because the function is only called when `self.fstring_stack` is not empty.
         let context = self.fstring_stack.last().unwrap();
 
         let value_start = self.offset();
-        let value_end = loop {
+        loop {
             match self.cursor.first() {
                 EOF_CHAR => {
                     return Err(LexicalError {
@@ -557,7 +554,7 @@ impl<'source> Lexer<'source> {
                     self.cursor.bump();
                     if matches!(self.cursor.first(), '{' | '}') {
                         // Don't consume `{` or `}` as we want them to be consumed as tokens.
-                        break self.offset() - TextSize::new(1);
+                        break;
                     } else if !context.is_raw_string {
                         if self.cursor.first() == 'N' && self.cursor.second() == '{' {
                             self.cursor.bump();
@@ -566,25 +563,21 @@ impl<'source> Lexer<'source> {
                         }
                     }
                 }
-                quote @ ('\'' | '"') if quote == context.quote_char() => {
-                    match context.quote_size() {
-                        StringQuoteSize::Single => {
-                            break self.offset();
-                        }
-                        StringQuoteSize::Triple => {
-                            let mut remaining = self.cursor.rest().chars();
-                            if remaining.next() == Some(quote) && remaining.next() == Some(quote) {
-                                break self.offset();
-                            }
+                quote @ ('\'' | '"') if quote == context.quote_char() => match context.quote_size {
+                    StringQuoteSize::Single => break,
+                    StringQuoteSize::Triple => {
+                        let mut remaining = self.cursor.rest().chars();
+                        if remaining.next() == Some(quote) && remaining.next() == Some(quote) {
+                            break;
                         }
                     }
-                }
+                },
                 '{' => {
                     if self.cursor.second() == '{' {
                         self.cursor.bump();
                         self.cursor.bump();
                     } else {
-                        break self.offset();
+                        break;
                     }
                 }
                 '}' => {
@@ -595,14 +588,15 @@ impl<'source> Lexer<'source> {
                         self.cursor.bump();
                         self.cursor.bump();
                     } else {
-                        break self.offset();
+                        break;
                     }
                 }
                 _ => {
                     self.cursor.bump();
                 }
             }
-        };
+        }
+        let value_end = self.offset();
 
         if value_start == value_end {
             return Ok(None);
@@ -615,25 +609,25 @@ impl<'source> Lexer<'source> {
         Ok(Some(Tok::FStringMiddle(value)))
     }
 
-    fn try_lex_fstring_end(&mut self) -> Option<Tok> {
+    fn maybe_lex_fstring_end(&mut self) -> Option<Tok> {
         // SAFETY: Safe because the function is only called when `self.fstring_stack` is not empty.
         let context = self.fstring_stack.last().unwrap();
 
-        if let quote @ ('\'' | '"') = self.cursor.first() {
-            if quote == context.quote_char() {
-                match context.quote_size() {
-                    StringQuoteSize::Single => {
+        if self.cursor.first() == context.quote_char() {
+            match context.quote_size {
+                StringQuoteSize::Single => {
+                    self.cursor.bump();
+                    return Some(Tok::FStringEnd);
+                }
+                StringQuoteSize::Triple => {
+                    let mut remaining = self.cursor.rest().chars();
+                    if remaining.next() == Some(context.quote_char())
+                        && remaining.next() == Some(context.quote_char())
+                    {
+                        self.cursor.bump();
+                        self.cursor.bump();
                         self.cursor.bump();
                         return Some(Tok::FStringEnd);
-                    }
-                    StringQuoteSize::Triple => {
-                        let mut remaining = self.cursor.rest().chars();
-                        if remaining.next() == Some(quote) && remaining.next() == Some(quote) {
-                            self.cursor.bump();
-                            self.cursor.bump();
-                            self.cursor.bump();
-                            return Some(Tok::FStringEnd);
-                        }
                     }
                 }
             }
@@ -712,10 +706,10 @@ impl<'source> Lexer<'source> {
         if let Some(fstring_context) = self.fstring_stack.last() {
             if !fstring_context.is_in_expression() {
                 self.cursor.start_token();
-                if let Some(tok) = self.try_lex_fstring_middle()? {
+                if let Some(tok) = self.maybe_lex_fstring_middle()? {
                     return Ok((tok, self.token_range()));
                 }
-                if let Some(tok) = self.try_lex_fstring_end() {
+                if let Some(tok) = self.maybe_lex_fstring_end() {
                     self.fstring_stack.pop();
                     return Ok((tok, self.token_range()));
                 }
@@ -997,45 +991,49 @@ impl<'source> Lexer<'source> {
             }
             '~' => Tok::Tilde,
             '(' => {
+                if let Some(fstring_context) = self.fstring_stack.last_mut() {
+                    fstring_context.open_parentheses();
+                }
                 self.nesting += 1;
                 Tok::Lpar
             }
             ')' => {
+                if let Some(fstring_context) = self.fstring_stack.last_mut() {
+                    fstring_context.close_parentheses();
+                }
                 self.nesting = self.nesting.saturating_sub(1);
                 Tok::Rpar
             }
             '[' => {
+                if let Some(fstring_context) = self.fstring_stack.last_mut() {
+                    fstring_context.open_parentheses();
+                }
                 self.nesting += 1;
                 Tok::Lsqb
             }
             ']' => {
+                if let Some(fstring_context) = self.fstring_stack.last_mut() {
+                    fstring_context.close_parentheses();
+                }
                 self.nesting = self.nesting.saturating_sub(1);
                 Tok::Rsqb
             }
             '{' => {
                 if let Some(fstring_context) = self.fstring_stack.last_mut() {
-                    fstring_context.open_curly_braces();
-                    if fstring_context.is_nested_too_deeply() {
-                        return Err(LexicalError {
-                            error: LexicalErrorType::FStringError(
-                                FStringErrorType::ExpressionNestedTooDeeply,
-                            ),
-                            location: self.token_start(),
-                        });
-                    }
+                    fstring_context.open_parentheses();
                 }
                 self.nesting += 1;
                 Tok::Lbrace
             }
             '}' => {
                 if let Some(fstring_context) = self.fstring_stack.last_mut() {
-                    if !fstring_context.has_open_curly_braces() {
+                    if !fstring_context.has_open_parentheses() {
                         return Err(LexicalError {
                             error: LexicalErrorType::FStringError(FStringErrorType::SingleRbrace),
                             location: self.token_start(),
                         });
                     }
-                    fstring_context.close_curly_braces();
+                    fstring_context.close_parentheses();
                 }
                 self.nesting = self.nesting.saturating_sub(1);
                 Tok::Rbrace
@@ -1307,7 +1305,7 @@ impl StringQuoteChar {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Debug)]
 enum StringQuoteSize {
     Single,
     Triple,
@@ -1317,7 +1315,7 @@ enum StringQuoteSize {
 struct FStringContext {
     quote_char: StringQuoteChar,
     quote_size: StringQuoteSize,
-    curly_braces_count: u32,
+    parentheses_count: u32,
     format_spec_count: u32,
     is_raw_string: bool,
 }
@@ -1327,53 +1325,56 @@ impl FStringContext {
         Self {
             quote_char,
             quote_size,
-            curly_braces_count: 0,
+            parentheses_count: 0,
             format_spec_count: 0,
             is_raw_string,
         }
     }
 
-    fn quote_char(&self) -> char {
+    /// Returns the quote character for the current f-string as a `char`.
+    const fn quote_char(&self) -> char {
         self.quote_char.as_char()
     }
 
-    fn quote_size(&self) -> StringQuoteSize {
-        self.quote_size
-    }
-
-    fn allow_multiline(&self) -> bool {
+    /// Returns `true` if the current f-string allows multiline i.e., a triple-quoted f-string.
+    const fn allow_multiline(&self) -> bool {
         matches!(self.quote_size, StringQuoteSize::Triple)
     }
 
-    fn is_nested_too_deeply(&self) -> bool {
-        self.curly_braces_count > MAX_FSTRING_EXPRESSION_NESTING
+    /// Returns `true` if the current f-string has open parentheses.
+    fn has_open_parentheses(&mut self) -> bool {
+        self.parentheses_count > 0
     }
 
-    fn has_open_curly_braces(&mut self) -> bool {
-        self.curly_braces_count > 0
+    /// Increments the number of parentheses for the current f-string.
+    fn open_parentheses(&mut self) {
+        self.parentheses_count += 1;
     }
 
-    fn open_curly_braces(&mut self) {
-        self.curly_braces_count += 1;
-    }
-
-    fn close_curly_braces(&mut self) {
+    /// Decrements the number of parentheses for the current f-string. If we're
+    /// in a format spec, also decrements the number of format specs.
+    fn close_parentheses(&mut self) {
         if self.is_in_format_spec() {
             self.format_spec_count = self.format_spec_count.saturating_sub(1);
         }
-        self.curly_braces_count = self.curly_braces_count.saturating_sub(1);
+        self.parentheses_count = self.parentheses_count.saturating_sub(1);
     }
 
+    /// Returns `true` if the lexer is in a f-string expression i.e., between two curly braces.
     fn is_in_expression(&self) -> bool {
-        self.curly_braces_count > self.format_spec_count
+        self.parentheses_count > self.format_spec_count
     }
 
+    /// Returns `true` if the lexer is in a f-string format spec i.e., after a colon.
     fn is_in_format_spec(&self) -> bool {
         self.format_spec_count > 0 && !self.is_in_expression()
     }
 
+    /// Returns `true` if the colon (`:`) for the current f-string is in a valid
+    /// position i.e., at the same level of nesting as the opening parenthese token.
+    /// Increments the number of format specs if it is.
     fn is_valid_format_spec_position(&mut self) -> bool {
-        if self.curly_braces_count - self.format_spec_count == 1 {
+        if self.parentheses_count - self.format_spec_count == 1 {
             self.format_spec_count += 1;
             true
         } else {
