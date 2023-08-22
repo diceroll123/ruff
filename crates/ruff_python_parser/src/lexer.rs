@@ -535,20 +535,23 @@ impl<'source> Lexer<'source> {
         loop {
             match self.cursor.first() {
                 EOF_CHAR => {
+                    let error = if context.allow_multiline() {
+                        FStringErrorType::UnterminatedTripleQuotedString
+                    } else {
+                        FStringErrorType::UnterminatedString
+                    };
+                    self.fstring_stack.pop();
                     return Err(LexicalError {
-                        error: LexicalErrorType::FStringError(if context.allow_multiline() {
-                            FStringErrorType::UnterminatedTripleQuotedString
-                        } else {
-                            FStringErrorType::UnterminatedString
-                        }),
+                        error: LexicalErrorType::FStringError(error),
                         location: self.offset(),
                     });
                 }
                 '\n' if !context.allow_multiline() => {
+                    self.fstring_stack.pop();
                     return Err(LexicalError {
                         error: LexicalErrorType::FStringError(FStringErrorType::UnterminatedString),
                         location: self.offset(),
-                    })
+                    });
                 }
                 '\\' => {
                     self.cursor.bump(); // '\'
@@ -556,9 +559,7 @@ impl<'source> Lexer<'source> {
                         // Don't consume `{` or `}` as we want them to be consumed as tokens.
                         break;
                     } else if !context.is_raw_string {
-                        if self.cursor.first() == 'N' && self.cursor.second() == '{' {
-                            self.cursor.bump(); // 'N'
-                            self.cursor.bump(); // '{'
+                        if self.cursor.eat_char('N') && self.cursor.eat_char('{') {
                             in_named_unicode = true;
                             continue;
                         }
@@ -566,15 +567,18 @@ impl<'source> Lexer<'source> {
                     // Consume the escaped character.
                     self.cursor.bump();
                 }
-                quote @ ('\'' | '"') if quote == context.quote_char() => match context.quote_size {
-                    StringQuoteSize::Single => break,
-                    StringQuoteSize::Triple => {
-                        let mut remaining = self.cursor.rest().chars();
-                        if remaining.next() == Some(quote) && remaining.next() == Some(quote) {
-                            break;
+                quote @ ('\'' | '"') if quote == context.quote_char() => {
+                    match context.quote_size {
+                        StringQuoteSize::Single => break,
+                        StringQuoteSize::Triple => {
+                            let mut remaining = self.cursor.rest().chars().skip(1);
+                            if remaining.next() == Some(quote) && remaining.next() == Some(quote) {
+                                break;
+                            }
                         }
                     }
-                },
+                    self.cursor.bump();
+                }
                 '{' => {
                     if self.cursor.second() == '{' {
                         self.cursor.bump();
@@ -623,7 +627,7 @@ impl<'source> Lexer<'source> {
                     return Some(Tok::FStringEnd);
                 }
                 StringQuoteSize::Triple => {
-                    let mut remaining = self.cursor.rest().chars();
+                    let mut remaining = self.cursor.rest().chars().skip(1);
                     if remaining.next() == Some(context.quote_char())
                         && remaining.next() == Some(context.quote_char())
                     {
@@ -2060,5 +2064,33 @@ allowed {x}"""} string""#;
     fn test_fstring_with_ipy_escape_command() {
         let source = r#"f"foo {!pwd} bar""#;
         assert_debug_snapshot!(lex_source(source));
+    }
+
+    fn lex_fstring_error(source: &str) -> FStringErrorType {
+        match lex(source, Mode::Module).find_map(|result| result.err()) {
+            Some(err) => match err.error {
+                LexicalErrorType::FStringError(error) => error,
+                _ => panic!("Expected FStringError: {:?}", err),
+            },
+            _ => panic!("Expected exactly one FStringError"),
+        }
+    }
+
+    #[test]
+    fn test_fstring_error() {
+        use FStringErrorType::{UnterminatedString, UnterminatedTripleQuotedString};
+
+        assert_eq!(lex_fstring_error(r#"f""#), UnterminatedString);
+        assert_eq!(lex_fstring_error(r#"f'"#), UnterminatedString);
+        assert_eq!(lex_fstring_error(r#"f""""#), UnterminatedTripleQuotedString);
+        assert_eq!(lex_fstring_error(r#"f'''"#), UnterminatedTripleQuotedString);
+        assert_eq!(
+            lex_fstring_error(r#"f"""""#),
+            UnterminatedTripleQuotedString
+        );
+        assert_eq!(
+            lex_fstring_error(r#"f""""""#),
+            UnterminatedTripleQuotedString
+        );
     }
 }
