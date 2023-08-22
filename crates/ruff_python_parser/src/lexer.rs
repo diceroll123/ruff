@@ -2067,10 +2067,10 @@ allowed {x}"""} string""#;
     }
 
     fn lex_fstring_error(source: &str) -> FStringErrorType {
-        match lex(source, Mode::Module).find_map(|result| result.err()) {
+        match lex(source, Mode::Module).find_map(std::result::Result::err) {
             Some(err) => match err.error {
                 LexicalErrorType::FStringError(error) => error,
-                _ => panic!("Expected FStringError: {:?}", err),
+                _ => panic!("Expected FStringError: {err:?}"),
             },
             _ => panic!("Expected exactly one FStringError"),
         }
