@@ -64,6 +64,8 @@ wild = { version = "2" }
 
 [dev-dependencies]
 assert_cmd = { version = "2.0.8" }
+# Avoid writing colored snapshots when running tests from the terminal
+colored = { workspace = true, features = ["no-color"]}
 insta = { workspace = true, features = ["filters"] }
 insta-cmd = { git = "https://github.com/mitsuhiko/insta-cmd", rev = "fb74f1018a8de13cf23e4512db5c4fd9918715c1" }
 tempfile = "3.6.0"

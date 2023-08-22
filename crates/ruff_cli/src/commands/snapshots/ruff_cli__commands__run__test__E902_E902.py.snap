@@ -1,7 +1,7 @@
 ---
 source: crates/ruff_cli/src/commands/run.rs
 ---
-[1m/home/ferris/project/code.py[0m[36m:[0m1[36m:[0m1[36m:[0m [1;31mE902[0m Permission denied (os error 13)
-[1m/home/ferris/project/notebook.ipynb[0m[36m:[0m1[36m:[0m1[36m:[0m [1;31mE902[0m Permission denied (os error 13)
-[1m/home/ferris/project/pyproject.toml[0m[36m:[0m1[36m:[0m1[36m:[0m [1;31mE902[0m Permission denied (os error 13)
+/home/ferris/project/code.py:1:1: E902 Permission denied (os error 13)
+/home/ferris/project/notebook.ipynb:1:1: E902 Permission denied (os error 13)
+/home/ferris/project/pyproject.toml:1:1: E902 Permission denied (os error 13)
 
