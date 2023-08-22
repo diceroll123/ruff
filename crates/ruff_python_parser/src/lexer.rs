@@ -1993,7 +1993,7 @@ def f(arg=%timeit a = b):
 
     #[test]
     fn test_fstring_named_unicode() {
-        let source = r#"f"\N{BULLET} normal""#;
+        let source = r#"f"\N{BULLET} normal \Nope""#;
         assert_debug_snapshot!(lex_source(source));
     }
 
