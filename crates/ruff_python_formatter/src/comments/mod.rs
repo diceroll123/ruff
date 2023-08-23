@@ -108,7 +108,7 @@ use ruff_python_trivia::PythonWhitespace;
 use crate::comments::debug::{DebugComment, DebugComments};
 use crate::comments::map::{LeadingDanglingTrailing, MultiMap};
 use crate::comments::node_key::NodeRefEqualityKey;
-use crate::comments::visitor::CommentsVisitor;
+use crate::comments::visitor::{collect_comments, get_comments_map, DecoratedComment};
 
 mod debug;
 pub(crate) mod format;
@@ -324,10 +324,19 @@ impl<'a> Comments<'a> {
         let map = if comment_ranges.is_empty() {
             CommentsMap::new()
         } else {
-            CommentsVisitor::new(source_code, comment_ranges).visit(root)
+            get_comments_map(root, source_code, comment_ranges)
         };
 
         Self::new(map)
+    }
+
+    /// Extracts the comments from the AST.
+    pub(crate) fn collect_decorated_comments(
+        root: &'a Mod,
+        source_code: SourceCode<'a>,
+        comment_ranges: &'a CommentRanges,
+    ) -> Vec<DecoratedComment<'a>> {
+        collect_comments(root, source_code, comment_ranges)
     }
 
     /// Returns `true` if the given `node` has any [leading comments](self#leading-comments).
