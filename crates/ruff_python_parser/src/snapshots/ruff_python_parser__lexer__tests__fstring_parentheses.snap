@@ -34,5 +34,20 @@ expression: lex_source(source)
         "{{}}",
     ),
     FStringEnd,
+    FStringStart,
+    FStringMiddle(
+        " ",
+    ),
+    Lbrace,
+    Rbrace,
+    FStringMiddle(
+        " {} {",
+    ),
+    Lbrace,
+    Rbrace,
+    FStringMiddle(
+        "} {{}}  ",
+    ),
+    FStringEnd,
     Newline,
 ]

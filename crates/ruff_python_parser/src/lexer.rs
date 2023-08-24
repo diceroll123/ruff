@@ -526,6 +526,13 @@ impl<'source> Lexer<'source> {
     }
 
     fn maybe_lex_fstring_middle(&mut self) -> Result<Option<Tok>, LexicalError> {
+        // The normalized string if the token value is not yet normalized.
+        // This must remain empty if it's already normalized. Normalization
+        // is to replace `{{` and `}}` with `{` and `}` respectively.
+        let mut normalized = String::new();
+        // Tracks the last offset of token value that has been written to `normalized`.
+        let mut last_offset = self.offset();
+
         let mut in_named_unicode = false;
 
         // SAFETY: Safe because the function is only called when `self.fstring_stack` is not empty.
@@ -588,7 +595,10 @@ impl<'source> Lexer<'source> {
                 '{' => {
                     if self.cursor.second() == '{' {
                         self.cursor.bump();
+                        normalized
+                            .push_str(&self.source[TextRange::new(last_offset, self.offset())]);
                         self.cursor.bump();
+                        last_offset = self.offset(); // Skip the second `{`
                     } else {
                         break;
                     }
@@ -599,7 +609,10 @@ impl<'source> Lexer<'source> {
                         self.cursor.bump();
                     } else if self.cursor.second() == '}' && !context.is_in_format_spec() {
                         self.cursor.bump();
+                        normalized
+                            .push_str(&self.source[TextRange::new(last_offset, self.offset())]);
                         self.cursor.bump();
+                        last_offset = self.offset(); // Skip the second `}`
                     } else {
                         break;
                     }
@@ -615,7 +628,12 @@ impl<'source> Lexer<'source> {
             return Ok(None);
         }
 
-        let value = self.source[range].replace("{{", "{").replace("}}", "}");
+        let value = if normalized.is_empty() {
+            self.source[range].to_string()
+        } else {
+            normalized.push_str(&self.source[TextRange::new(last_offset, self.offset())]);
+            normalized
+        };
         Ok(Some(Tok::FStringMiddle(value)))
     }
 
@@ -1985,7 +2003,7 @@ def f(arg=%timeit a = b):
 
     #[test]
     fn test_fstring_parentheses() {
-        let source = r#"f"{}" f"{{}}" f" {}" f"{{{}}}" f"{{{{}}}}""#;
+        let source = r#"f"{}" f"{{}}" f" {}" f"{{{}}}" f"{{{{}}}}" f" {} {{}} {{{}}} {{{{}}}}  ""#;
         assert_debug_snapshot!(lex_source(source));
     }
 
