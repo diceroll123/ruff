@@ -531,7 +531,6 @@ impl<'source> Lexer<'source> {
         // SAFETY: Safe because the function is only called when `self.fstring_stack` is not empty.
         let context = self.fstring_stack.last().unwrap();
 
-        let value_start = self.offset();
         loop {
             match self.cursor.first() {
                 EOF_CHAR => {
@@ -540,6 +539,8 @@ impl<'source> Lexer<'source> {
                     } else {
                         FStringErrorType::UnterminatedString
                     };
+                    // This is to avoid infinite loop where the lexer keeps returning
+                    // the error token.
                     self.fstring_stack.pop();
                     return Err(LexicalError {
                         error: LexicalErrorType::FStringError(error),
@@ -547,6 +548,8 @@ impl<'source> Lexer<'source> {
                     });
                 }
                 '\n' if !context.allow_multiline() => {
+                    // This is to avoid infinite loop where the lexer keeps returning
+                    // the error token.
                     self.fstring_stack.pop();
                     return Err(LexicalError {
                         error: LexicalErrorType::FStringError(FStringErrorType::UnterminatedString),
@@ -559,7 +562,7 @@ impl<'source> Lexer<'source> {
                         // Don't consume `{` or `}` as we want them to be consumed as tokens.
                         break;
                     } else if !context.is_raw_string {
-                        if self.cursor.eat_char('N') && self.cursor.eat_char('{') {
+                        if self.cursor.eat_char2('N', '{') {
                             in_named_unicode = true;
                             continue;
                         }
@@ -571,8 +574,11 @@ impl<'source> Lexer<'source> {
                     match context.quote_size {
                         StringQuoteSize::Single => break,
                         StringQuoteSize::Triple => {
-                            let mut remaining = self.cursor.rest().chars().skip(1);
-                            if remaining.next() == Some(quote) && remaining.next() == Some(quote) {
+                            let triple_quote = match context.quote_char {
+                                StringQuoteChar::Single => "'''",
+                                StringQuoteChar::Double => r#"""""#,
+                            };
+                            if self.cursor.rest().starts_with(triple_quote) {
                                 break;
                             }
                         }
@@ -603,39 +609,30 @@ impl<'source> Lexer<'source> {
                 }
             }
         }
-        let value_end = self.offset();
 
-        if value_start == value_end {
+        let range = self.token_range();
+        if range.is_empty() {
             return Ok(None);
         }
 
-        let value = self.source[TextRange::new(value_start, value_end)]
-            .to_string()
-            .replace("{{", "{")
-            .replace("}}", "}");
+        let value = self.source[range].replace("{{", "{").replace("}}", "}");
         Ok(Some(Tok::FStringMiddle(value)))
     }
 
-    fn maybe_lex_fstring_end(&mut self) -> Option<Tok> {
+    fn eat_fstring_end(&mut self) -> Option<Tok> {
         // SAFETY: Safe because the function is only called when `self.fstring_stack` is not empty.
         let context = self.fstring_stack.last().unwrap();
 
-        if self.cursor.first() == context.quote_char() {
-            match context.quote_size {
-                StringQuoteSize::Single => {
-                    self.cursor.bump();
+        match context.quote_size {
+            StringQuoteSize::Single => {
+                if self.cursor.eat_char(context.quote_char()) {
                     return Some(Tok::FStringEnd);
                 }
-                StringQuoteSize::Triple => {
-                    let mut remaining = self.cursor.rest().chars().skip(1);
-                    if remaining.next() == Some(context.quote_char())
-                        && remaining.next() == Some(context.quote_char())
-                    {
-                        self.cursor.bump();
-                        self.cursor.bump();
-                        self.cursor.bump();
-                        return Some(Tok::FStringEnd);
-                    }
+            }
+            StringQuoteSize::Triple => {
+                let quote_char = context.quote_char();
+                if self.cursor.eat_char3(quote_char, quote_char, quote_char) {
+                    return Some(Tok::FStringEnd);
                 }
             }
         }
@@ -716,7 +713,7 @@ impl<'source> Lexer<'source> {
                 if let Some(tok) = self.maybe_lex_fstring_middle()? {
                     return Ok((tok, self.token_range()));
                 }
-                if let Some(tok) = self.maybe_lex_fstring_end() {
+                if let Some(tok) = self.eat_fstring_end() {
                     self.fstring_stack.pop();
                     return Ok((tok, self.token_range()));
                 }
@@ -999,35 +996,35 @@ impl<'source> Lexer<'source> {
             '~' => Tok::Tilde,
             '(' => {
                 if let Some(fstring_context) = self.fstring_stack.last_mut() {
-                    fstring_context.open_parentheses();
+                    fstring_context.increment_opening_parentheses();
                 }
                 self.nesting += 1;
                 Tok::Lpar
             }
             ')' => {
                 if let Some(fstring_context) = self.fstring_stack.last_mut() {
-                    fstring_context.close_parentheses();
+                    fstring_context.decrement_closing_parentheses();
                 }
                 self.nesting = self.nesting.saturating_sub(1);
                 Tok::Rpar
             }
             '[' => {
                 if let Some(fstring_context) = self.fstring_stack.last_mut() {
-                    fstring_context.open_parentheses();
+                    fstring_context.increment_opening_parentheses();
                 }
                 self.nesting += 1;
                 Tok::Lsqb
             }
             ']' => {
                 if let Some(fstring_context) = self.fstring_stack.last_mut() {
-                    fstring_context.close_parentheses();
+                    fstring_context.decrement_closing_parentheses();
                 }
                 self.nesting = self.nesting.saturating_sub(1);
                 Tok::Rsqb
             }
             '{' => {
                 if let Some(fstring_context) = self.fstring_stack.last_mut() {
-                    fstring_context.open_parentheses();
+                    fstring_context.increment_opening_parentheses();
                 }
                 self.nesting += 1;
                 Tok::Lbrace
@@ -1040,7 +1037,7 @@ impl<'source> Lexer<'source> {
                             location: self.token_start(),
                         });
                     }
-                    fstring_context.close_parentheses();
+                    fstring_context.decrement_closing_parentheses();
                 }
                 self.nesting = self.nesting.saturating_sub(1);
                 Tok::Rbrace
@@ -1049,7 +1046,7 @@ impl<'source> Lexer<'source> {
                 if self
                     .fstring_stack
                     .last_mut()
-                    .is_some_and(FStringContext::is_valid_format_spec_position)
+                    .is_some_and(FStringContext::try_start_format_spec)
                 {
                     Tok::Colon
                 } else if self.cursor.eat_char('=') {
@@ -1285,7 +1282,7 @@ impl std::fmt::Display for LexicalErrorType {
     }
 }
 
-#[derive(Debug)]
+#[derive(Copy, Clone, Debug)]
 enum StringQuoteChar {
     Single,
     Double,
@@ -1304,7 +1301,7 @@ impl TryFrom<char> for StringQuoteChar {
 }
 
 impl StringQuoteChar {
-    const fn as_char(&self) -> char {
+    const fn as_char(self) -> char {
         match self {
             Self::Single => '\'',
             Self::Double => '"',
@@ -1312,7 +1309,7 @@ impl StringQuoteChar {
     }
 }
 
-#[derive(Debug)]
+#[derive(Copy, Clone, Debug)]
 enum StringQuoteSize {
     Single,
     Triple,
@@ -1354,13 +1351,13 @@ impl FStringContext {
     }
 
     /// Increments the number of parentheses for the current f-string.
-    fn open_parentheses(&mut self) {
+    fn increment_opening_parentheses(&mut self) {
         self.parentheses_count += 1;
     }
 
     /// Decrements the number of parentheses for the current f-string. If we're
     /// in a format spec, also decrements the number of format specs.
-    fn close_parentheses(&mut self) {
+    fn decrement_closing_parentheses(&mut self) {
         if self.is_in_format_spec() {
             self.format_spec_count = self.format_spec_count.saturating_sub(1);
         }
@@ -1380,8 +1377,12 @@ impl FStringContext {
     /// Returns `true` if the colon (`:`) for the current f-string is in a valid
     /// position i.e., at the same level of nesting as the opening parentheses token.
     /// Increments the number of format specs if it is.
-    fn is_valid_format_spec_position(&mut self) -> bool {
-        if self.parentheses_count - self.format_spec_count == 1 {
+    fn try_start_format_spec(&mut self) -> bool {
+        if self
+            .parentheses_count
+            .saturating_sub(self.format_spec_count)
+            == 1
+        {
             self.format_spec_count += 1;
             true
         } else {
@@ -1993,7 +1994,7 @@ def f(arg=%timeit a = b):
 
     #[test]
     fn test_fstring_named_unicode() {
-        let source = r#"f"\N{BULLET} normal \Nope""#;
+        let source = r#"f"\N{BULLET} normal \Nope \N""#;
         assert_debug_snapshot!(lex_source(source));
     }
 

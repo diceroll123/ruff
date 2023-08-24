@@ -5,7 +5,7 @@ expression: lex_source(source)
 [
     FStringStart,
     FStringMiddle(
-        "\\N{BULLET} normal \\Nope",
+        "\\N{BULLET} normal \\Nope \\N",
     ),
     FStringEnd,
     Newline,
