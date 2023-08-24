@@ -525,18 +525,34 @@ impl<'source> Lexer<'source> {
         Tok::FStringStart
     }
 
-    fn maybe_lex_fstring_middle(&mut self) -> Result<Option<Tok>, LexicalError> {
+    fn lex_fstring_middle_or_end(&mut self) -> Result<Tok, LexicalError> {
+        // SAFETY: Safe because the function is only called when `self.fstring_stack` is not empty.
+        let context = self.fstring_stack.last().unwrap();
+
+        // Check if we're at the end of the f-string.
+        match context.quote_size {
+            StringQuoteSize::Single => {
+                if self.cursor.eat_char(context.quote_char.as_char()) {
+                    return Ok(Tok::FStringEnd);
+                }
+            }
+            StringQuoteSize::Triple => {
+                let quote_char = context.quote_char.as_char();
+                if self.cursor.eat_char3(quote_char, quote_char, quote_char) {
+                    return Ok(Tok::FStringEnd);
+                }
+            }
+        }
+
         // The normalized string if the token value is not yet normalized.
         // This must remain empty if it's already normalized. Normalization
         // is to replace `{{` and `}}` with `{` and `}` respectively.
         let mut normalized = String::new();
+
         // Tracks the last offset of token value that has been written to `normalized`.
         let mut last_offset = self.offset();
 
         let mut in_named_unicode = false;
-
-        // SAFETY: Safe because the function is only called when `self.fstring_stack` is not empty.
-        let context = self.fstring_stack.last().unwrap();
 
         loop {
             match self.cursor.first() {
@@ -577,7 +593,7 @@ impl<'source> Lexer<'source> {
                     // Consume the escaped character.
                     self.cursor.bump();
                 }
-                quote @ ('\'' | '"') if quote == context.quote_char() => {
+                quote @ ('\'' | '"') if quote == context.quote_char.as_char() => {
                     match context.quote_size {
                         StringQuoteSize::Single => break,
                         StringQuoteSize::Triple => {
@@ -624,9 +640,9 @@ impl<'source> Lexer<'source> {
         }
 
         let range = self.token_range();
-        if range.is_empty() {
-            return Ok(None);
-        }
+
+        #[cfg(debug_assertions)]
+        debug_assert!(!range.is_empty());
 
         let value = if normalized.is_empty() {
             self.source[range].to_string()
@@ -634,28 +650,7 @@ impl<'source> Lexer<'source> {
             normalized.push_str(&self.source[TextRange::new(last_offset, self.offset())]);
             normalized
         };
-        Ok(Some(Tok::FStringMiddle(value)))
-    }
-
-    fn eat_fstring_end(&mut self) -> Option<Tok> {
-        // SAFETY: Safe because the function is only called when `self.fstring_stack` is not empty.
-        let context = self.fstring_stack.last().unwrap();
-
-        match context.quote_size {
-            StringQuoteSize::Single => {
-                if self.cursor.eat_char(context.quote_char()) {
-                    return Some(Tok::FStringEnd);
-                }
-            }
-            StringQuoteSize::Triple => {
-                let quote_char = context.quote_char();
-                if self.cursor.eat_char3(quote_char, quote_char, quote_char) {
-                    return Some(Tok::FStringEnd);
-                }
-            }
-        }
-
-        None
+        Ok(Tok::FStringMiddle(value))
     }
 
     /// Lex a string literal.
@@ -731,15 +726,19 @@ impl<'source> Lexer<'source> {
                 // the start of a f-string expression i.e., `f"{foo}"` and not
                 // `f"{{foo}}"`.
                 && (self.cursor.first() != '{' || self.cursor.second() == '{')
+                // Avoid lexing f-string middle/end if we're sure that this is
+                // the end of a f-string expression. This is only for when
+                // the `}` is after the format specifier i.e., `f"{foo:.3f}"`
+                // because the `.3f` is lexed as `FStringMiddle` and thus not
+                // in a f-string expression.
+                && (!fstring_context.is_in_format_spec() || self.cursor.first() != '}')
             {
                 self.cursor.start_token();
-                if let Some(tok) = self.maybe_lex_fstring_middle()? {
-                    return Ok((tok, self.token_range()));
-                }
-                if let Some(tok) = self.eat_fstring_end() {
+                let tok = self.lex_fstring_middle_or_end()?;
+                if matches!(tok, Tok::FStringEnd) {
                     self.fstring_stack.pop();
-                    return Ok((tok, self.token_range()));
                 }
+                return Ok((tok, self.token_range()));
             }
         }
 
@@ -1356,11 +1355,6 @@ impl FStringContext {
             format_spec_count: 0,
             is_raw_string,
         }
-    }
-
-    /// Returns the quote character for the current f-string as a `char`.
-    const fn quote_char(&self) -> char {
-        self.quote_char.as_char()
     }
 
     /// Returns `true` if the current f-string allows multiline i.e., a triple-quoted f-string.
