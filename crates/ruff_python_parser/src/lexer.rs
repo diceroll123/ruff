@@ -709,6 +709,9 @@ impl<'source> Lexer<'source> {
     pub fn next_token(&mut self) -> LexResult {
         if let Some(fstring_context) = self.fstring_stack.last() {
             if !fstring_context.is_in_expression()
+                // Avoid lexing f-string middle/end if we're sure that this is
+                // the start of a f-string expression i.e., `f"{foo}"` and not
+                // `f"{{foo}}"`.
                 && (self.cursor.first() != '{' || self.cursor.second() == '{')
             {
                 self.cursor.start_token();
