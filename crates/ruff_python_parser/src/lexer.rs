@@ -708,7 +708,9 @@ impl<'source> Lexer<'source> {
     // This function is used by the iterator implementation.
     pub fn next_token(&mut self) -> LexResult {
         if let Some(fstring_context) = self.fstring_stack.last() {
-            if !fstring_context.is_in_expression() {
+            if !fstring_context.is_in_expression()
+                && (self.cursor.first() != '{' || self.cursor.second() == '{')
+            {
                 self.cursor.start_token();
                 if let Some(tok) = self.maybe_lex_fstring_middle()? {
                     return Ok((tok, self.token_range()));
@@ -1975,6 +1977,12 @@ def f(arg=%timeit a = b):
     #[test]
     fn test_fstring() {
         let source = r#"f"normal {foo} {{another}} {bar} {{{three}}}""#;
+        assert_debug_snapshot!(lex_source(source));
+    }
+
+    #[test]
+    fn test_fstring_parentheses() {
+        let source = r#"f"{}" f"{{}}" f" {}" f"{{{}}}" f"{{{{}}}}""#;
         assert_debug_snapshot!(lex_source(source));
     }
 
