@@ -8,8 +8,10 @@ use std::sync::Mutex;
 use std::time::{Duration, SystemTime};
 
 use anyhow::{Context, Result};
+use rustc_hash::FxHashMap;
 use serde::{Deserialize, Serialize};
 
+use ruff::jupyter::NotebookIndex;
 use ruff::message::Message;
 use ruff::settings::Settings;
 use ruff::warn_user;
@@ -193,6 +195,7 @@ impl Cache {
         key: T,
         messages: &[Message],
         imports: &ImportMap,
+        notebook_index: Option<&NotebookIndex>,
     ) {
         let source = if let Some(msg) = messages.first() {
             msg.file.source_text().to_owned()
@@ -226,6 +229,7 @@ impl Cache {
             imports: imports.clone(),
             messages,
             source,
+            notebook_index: notebook_index.cloned(),
         };
         self.new_files.lock().unwrap().insert(path, file);
     }
@@ -263,6 +267,8 @@ pub(crate) struct FileCache {
     ///
     /// This will be empty if `messages` is empty.
     source: String,
+    /// Notebook index if this file is a Jupyter Notebook.
+    notebook_index: Option<NotebookIndex>,
 }
 
 impl FileCache {
@@ -283,7 +289,12 @@ impl FileCache {
                 })
                 .collect()
         };
-        Diagnostics::new(messages, self.imports.clone())
+        let notebook_indexes = if let Some(notebook_index) = self.notebook_index.as_ref() {
+            FxHashMap::from_iter([(path.to_string_lossy().to_string(), notebook_index.clone())])
+        } else {
+            FxHashMap::default()
+        };
+        Diagnostics::new(messages, self.imports.clone(), notebook_indexes)
     }
 }
 
@@ -445,8 +456,8 @@ mod tests {
         }
 
         // Not stored in the cache.
-        expected_diagnostics.notebooks.clear();
-        got_diagnostics.notebooks.clear();
+        expected_diagnostics.notebook_indexes.clear();
+        got_diagnostics.notebook_indexes.clear();
         assert_eq!(expected_diagnostics, got_diagnostics);
     }
 
@@ -614,6 +625,7 @@ mod tests {
                 imports: ImportMap::new(),
                 messages: Vec::new(),
                 source: String::new(),
+                notebook_index: None,
             },
         );
 

@@ -15,7 +15,7 @@ use log::{debug, error, warn};
 use rustc_hash::FxHashMap;
 use similar::TextDiff;
 
-use ruff::jupyter::{Cell, Notebook};
+use ruff::jupyter::{Cell, Notebook, NotebookIndex};
 use ruff::linter::{lint_fix, lint_only, FixTable, FixerResult, LinterResult};
 use ruff::logging::DisplayParseError;
 use ruff::message::Message;
@@ -64,16 +64,20 @@ pub(crate) struct Diagnostics {
     pub(crate) messages: Vec<Message>,
     pub(crate) fixed: FxHashMap<String, FixTable>,
     pub(crate) imports: ImportMap,
-    pub(crate) notebooks: FxHashMap<String, Notebook>,
+    pub(crate) notebook_indexes: FxHashMap<String, NotebookIndex>,
 }
 
 impl Diagnostics {
-    pub(crate) fn new(messages: Vec<Message>, imports: ImportMap) -> Self {
+    pub(crate) fn new(
+        messages: Vec<Message>,
+        imports: ImportMap,
+        notebook_indexes: FxHashMap<String, NotebookIndex>,
+    ) -> Self {
         Self {
             messages,
             fixed: FxHashMap::default(),
             imports,
-            notebooks: FxHashMap::default(),
+            notebook_indexes,
         }
     }
 
@@ -90,6 +94,7 @@ impl Diagnostics {
             Self::new(
                 vec![Message::from_diagnostic(io_err, dummy, TextSize::default())],
                 ImportMap::default(),
+                FxHashMap::default(),
             )
         } else {
             warn!(
@@ -118,7 +123,7 @@ impl AddAssign for Diagnostics {
                 }
             }
         }
-        self.notebooks.extend(other.notebooks);
+        self.notebook_indexes.extend(other.notebook_indexes);
     }
 }
 
@@ -391,7 +396,13 @@ pub(crate) fn lint_path(
     if let Some((cache, relative_path, key)) = caching {
         // We don't cache parsing errors.
         if parse_error.is_none() {
-            cache.update(relative_path.to_owned(), key, &messages, &imports);
+            cache.update(
+                relative_path.to_owned(),
+                key,
+                &messages,
+                &imports,
+                source_kind.as_ipy_notebook().map(Notebook::index),
+            );
         }
     }
 
@@ -409,12 +420,13 @@ pub(crate) fn lint_path(
         );
     }
 
-    let notebooks = if let SourceKind::IpyNotebook(notebook) = source_kind {
+    let notebook_indexes = if let SourceKind::IpyNotebook(notebook) = source_kind {
         FxHashMap::from_iter([(
             path.to_str()
                 .ok_or_else(|| anyhow!("Unable to parse filename: {:?}", path))?
                 .to_string(),
-            notebook,
+            // Index needs to be computed always to store in cache.
+            notebook.index().clone(),
         )])
     } else {
         FxHashMap::default()
@@ -424,7 +436,7 @@ pub(crate) fn lint_path(
         messages,
         fixed: FxHashMap::from_iter([(fs::relativize_path(path), fixed)]),
         imports,
-        notebooks,
+        notebook_indexes,
     })
 }
 
@@ -549,7 +561,7 @@ pub(crate) fn lint_stdin(
             fixed,
         )]),
         imports,
-        notebooks: FxHashMap::default(),
+        notebook_indexes: FxHashMap::default(),
     })
 }
 

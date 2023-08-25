@@ -12,6 +12,7 @@ use log::{debug, error, warn};
 #[cfg(not(target_family = "wasm"))]
 use rayon::prelude::*;
 use ruff_text_size::{TextRange, TextSize};
+use rustc_hash::FxHashMap;
 
 use ruff::message::Message;
 use ruff::registry::Rule;
@@ -155,6 +156,7 @@ pub(crate) fn run(
                                 TextSize::default(),
                             )],
                             ImportMap::default(),
+                            FxHashMap::default(),
                         )
                     } else {
                         warn!(

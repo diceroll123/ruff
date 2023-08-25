@@ -413,7 +413,7 @@ impl Notebook {
     /// The index is built only once when required. This is only used to
     /// report diagnostics, so by that time all of the autofixes must have
     /// been applied if `--fix` was passed.
-    pub(crate) fn index(&self) -> &NotebookIndex {
+    pub fn index(&self) -> &NotebookIndex {
         self.index.get_or_init(|| self.build_index())
     }
 
