@@ -128,7 +128,7 @@ impl LineWidth {
 
 impl Default for LineWidth {
     fn default() -> Self {
-        Self(80)
+        Self(88)
     }
 }
 
