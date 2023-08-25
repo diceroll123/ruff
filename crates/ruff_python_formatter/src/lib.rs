@@ -350,11 +350,9 @@ for converter in connection.ops.get_db_converters(
             }
         }
 
-        // 77 after g group (leading quote)
-        let fits =
-            r#"aaaaaaaaaa bbbbbbbbbb cccccccccc dddddddddd eeeeeeeeee ffffffffff gggggggggg h"#;
-        let breaks =
-            r#"aaaaaaaaaa bbbbbbbbbb cccccccccc dddddddddd eeeeeeeeee ffffffffff gggggggggg hh"#;
+        // 85 after g group (leading quote)
+        let fits = r#"aaaaaaaaaa bbbbbbbbbb cccccccccc dddddddddd eeeeeeeeee ffffffffff gggggggggg hhhhhhh i"#;
+        let breaks = r#"aaaaaaaaaa bbbbbbbbbb cccccccccc dddddddddd eeeeeeeeee ffffffffff gggggggggg hhhhhhh iii"#;
 
         let output = format!(
             SimpleFormatContext::default(),
