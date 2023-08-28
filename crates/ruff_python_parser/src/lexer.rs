@@ -171,16 +171,29 @@ impl<'source> Lexer<'source> {
     /// Lex an identifier. Also used for keywords and string/bytes literals with a prefix.
     fn lex_identifier(&mut self, first: char) -> Result<Tok, LexicalError> {
         // Detect potential string like rb'' b'' f'' u'' r''
-        match self.cursor.first() {
-            quote @ ('\'' | '"') => {
+        match (first, self.cursor.first()) {
+            ('f' | 'F', quote @ ('\'' | '"')) => {
+                self.cursor.bump();
+                return Ok(self.lex_fstring_start(quote, false));
+            }
+            ('r' | 'R', 'f' | 'F') if is_quote(self.cursor.second()) => {
+                self.cursor.bump();
+                let quote = self.cursor.bump().unwrap();
+                return Ok(self.lex_fstring_start(quote, true));
+            }
+            ('f' | 'F', 'r' | 'R') if is_quote(self.cursor.second()) => {
+                self.cursor.bump();
+                let quote = self.cursor.bump().unwrap();
+                return Ok(self.lex_fstring_start(quote, true));
+            }
+            (_, quote @ ('\'' | '"')) => {
                 if let Ok(string_kind) = StringKind::try_from(first) {
                     self.cursor.bump();
                     return self.lex_string(string_kind, quote);
                 }
             }
-            second @ ('f' | 'F' | 'r' | 'R' | 'b' | 'B') if is_quote(self.cursor.second()) => {
+            (_, second @ ('r' | 'R' | 'b' | 'B')) if is_quote(self.cursor.second()) => {
                 self.cursor.bump();
-
                 if let Ok(string_kind) = StringKind::try_from([first, second]) {
                     let quote = self.cursor.bump().unwrap();
                     return self.lex_string(string_kind, quote);
@@ -512,12 +525,20 @@ impl<'source> Lexer<'source> {
     }
 
     /// Lex a f-string start token.
-    fn lex_fstring_start(&mut self, quote: char, triple_quoted: bool, is_raw_string: bool) -> Tok {
-        let quote_size = if triple_quoted {
+    fn lex_fstring_start(&mut self, quote: char, is_raw_string: bool) -> Tok {
+        #[cfg(debug_assertions)]
+        debug_assert_eq!(self.cursor.previous(), quote);
+
+        // If the next two characters are also the quote character, then we have a triple-quoted
+        // string; consume those two characters and ensure that we require a triple-quote to close
+        let quote_size = if self.cursor.first() == quote && self.cursor.second() == quote {
+            self.cursor.bump();
+            self.cursor.bump();
             StringQuoteSize::Triple
         } else {
             StringQuoteSize::Single
         };
+
         // SAFETY: Safe because `quote` is either `'` or `"`
         let quote_char = StringQuoteChar::try_from(quote).unwrap();
         self.fstring_stack
@@ -661,10 +682,6 @@ impl<'source> Lexer<'source> {
         // If the next two characters are also the quote character, then we have a triple-quoted
         // string; consume those two characters and ensure that we require a triple-quote to close
         let triple_quoted = self.cursor.eat_char2(quote, quote);
-
-        if kind.is_any_fstring() {
-            return Ok(self.lex_fstring_start(quote, triple_quoted, kind.is_raw()));
-        }
 
         let value_start = self.offset();
 
@@ -1986,6 +2003,12 @@ def f(arg=%timeit a = b):
     #[test]
     fn test_empty_fstrings() {
         let source = r#"f"" "" F"" f'' '' f"""""" f''''''"#;
+        assert_debug_snapshot!(lex_source(source));
+    }
+
+    #[test]
+    fn test_fstring_prefix() {
+        let source = r#"f"" F"" rf"" rF"" Rf"" RF"" fr"" Fr"" fR"" FR"""#;
         assert_debug_snapshot!(lex_source(source));
     }
 
