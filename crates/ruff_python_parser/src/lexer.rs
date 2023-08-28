@@ -546,7 +546,7 @@ impl<'source> Lexer<'source> {
         Tok::FStringStart
     }
 
-    fn lex_fstring_middle_or_end(&mut self) -> Result<Tok, LexicalError> {
+    fn lex_fstring_middle_or_end(&mut self) -> Result<Option<Tok>, LexicalError> {
         // SAFETY: Safe because the function is only called when `self.fstring_stack` is not empty.
         let context = self.fstring_stack.last().unwrap();
 
@@ -554,13 +554,13 @@ impl<'source> Lexer<'source> {
         match context.quote_size {
             StringQuoteSize::Single => {
                 if self.cursor.eat_char(context.quote_char.as_char()) {
-                    return Ok(Tok::FStringEnd);
+                    return Ok(Some(Tok::FStringEnd));
                 }
             }
             StringQuoteSize::Triple => {
                 let quote_char = context.quote_char.as_char();
                 if self.cursor.eat_char3(quote_char, quote_char, quote_char) {
-                    return Ok(Tok::FStringEnd);
+                    return Ok(Some(Tok::FStringEnd));
                 }
             }
         }
@@ -661,9 +661,9 @@ impl<'source> Lexer<'source> {
         }
 
         let range = self.token_range();
-
-        #[cfg(debug_assertions)]
-        debug_assert!(!range.is_empty());
+        if range.is_empty() {
+            return Ok(None);
+        }
 
         let value = if normalized.is_empty() {
             self.source[range].to_string()
@@ -671,7 +671,7 @@ impl<'source> Lexer<'source> {
             normalized.push_str(&self.source[TextRange::new(last_offset, self.offset())]);
             normalized
         };
-        Ok(Tok::FStringMiddle(value))
+        Ok(Some(Tok::FStringMiddle(value)))
     }
 
     /// Lex a string literal.
@@ -738,24 +738,14 @@ impl<'source> Lexer<'source> {
     // This function is used by the iterator implementation.
     pub fn next_token(&mut self) -> LexResult {
         if let Some(fstring_context) = self.fstring_stack.last() {
-            if !fstring_context.is_in_expression()
-                // Avoid lexing f-string middle/end if we're sure that this is
-                // the start of a f-string expression i.e., `f"{foo}"` and not
-                // `f"{{foo}}"`.
-                && (self.cursor.first() != '{' || self.cursor.second() == '{')
-                // Avoid lexing f-string middle/end if we're sure that this is
-                // the end of a f-string expression. This is only for when
-                // the `}` is after the format specifier i.e., `f"{foo:.3f}"`
-                // because the `.3f` is lexed as `FStringMiddle` and thus not
-                // in a f-string expression.
-                && (!fstring_context.is_in_format_spec() || self.cursor.first() != '}')
-            {
+            if !fstring_context.is_in_expression() {
                 self.cursor.start_token();
-                let tok = self.lex_fstring_middle_or_end()?;
-                if matches!(tok, Tok::FStringEnd) {
-                    self.fstring_stack.pop();
+                if let Some(tok) = self.lex_fstring_middle_or_end()? {
+                    if matches!(tok, Tok::FStringEnd) {
+                        self.fstring_stack.pop();
+                    }
+                    return Ok((tok, self.token_range()));
                 }
-                return Ok((tok, self.token_range()));
             }
         }
 
