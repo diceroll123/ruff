@@ -683,6 +683,29 @@ impl<'source> Lexer<'source> {
         // string; consume those two characters and ensure that we require a triple-quote to close
         let triple_quoted = self.cursor.eat_char2(quote, quote);
 
+        if let Some(fstring_context) = self.fstring_stack.last() {
+            // When we are in an f-string, check whether does the initial quote
+            // matches with f-strings quotes and if it is, then this must be a
+            // missing '}' token so raise the proper error.
+            if fstring_context.quote_char.as_char() == quote {
+                match fstring_context.quote_size {
+                    StringQuoteSize::Single if !triple_quoted => {
+                        return Err(LexicalError {
+                            error: LexicalErrorType::FStringError(FStringErrorType::UnclosedLbrace),
+                            location: self.offset() - TextSize::new(1),
+                        });
+                    }
+                    StringQuoteSize::Triple if triple_quoted => {
+                        return Err(LexicalError {
+                            error: LexicalErrorType::FStringError(FStringErrorType::UnclosedLbrace),
+                            location: self.offset() - TextSize::new(3),
+                        });
+                    }
+                    _ => {}
+                }
+            }
+        }
+
         let value_start = self.offset();
 
         let value_end = loop {
@@ -2109,14 +2132,26 @@ allowed {x}"""} string""#;
                 LexicalErrorType::FStringError(error) => error,
                 _ => panic!("Expected FStringError: {err:?}"),
             },
-            _ => panic!("Expected exactly one FStringError"),
+            _ => panic!("Expected atleast one FStringError"),
         }
     }
 
     #[test]
     fn test_fstring_error() {
-        use FStringErrorType::{UnterminatedString, UnterminatedTripleQuotedString};
+        use FStringErrorType::{
+            UnclosedLbrace, UnterminatedString, UnterminatedTripleQuotedString,
+        };
 
+        assert_eq!(lex_fstring_error(r#"f"{""#), UnclosedLbrace);
+        assert_eq!(lex_fstring_error(r#"f"{foo!r""#), UnclosedLbrace);
+        assert_eq!(
+            lex_fstring_error(
+                r#"f"{"
+"#
+            ),
+            UnclosedLbrace
+        );
+        assert_eq!(lex_fstring_error(r#"f"""{""""#), UnclosedLbrace);
         assert_eq!(lex_fstring_error(r#"f""#), UnterminatedString);
         assert_eq!(lex_fstring_error(r#"f'"#), UnterminatedString);
         assert_eq!(lex_fstring_error(r#"f""""#), UnterminatedTripleQuotedString);
