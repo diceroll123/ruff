@@ -66,6 +66,7 @@ pub struct Lexer<'source> {
     // Lexer mode.
     mode: Mode,
 
+    #[cfg(feature = "pep-701")]
     fstring_stack: Vec<FStringContext>,
 }
 
@@ -159,6 +160,7 @@ impl<'source> Lexer<'source> {
             source: input,
             cursor: Cursor::new(input),
             mode,
+            #[cfg(feature = "pep-701")]
             fstring_stack: vec![],
         };
         // TODO: Handle possible mismatch between BOM and explicit encoding declaration.
@@ -171,17 +173,13 @@ impl<'source> Lexer<'source> {
     /// Lex an identifier. Also used for keywords and string/bytes literals with a prefix.
     fn lex_identifier(&mut self, first: char) -> Result<Tok, LexicalError> {
         // Detect potential string like rb'' b'' f'' u'' r''
+        #[cfg(feature = "pep-701")]
         match (first, self.cursor.first()) {
             ('f' | 'F', quote @ ('\'' | '"')) => {
                 self.cursor.bump();
                 return Ok(self.lex_fstring_start(quote, false));
             }
-            ('r' | 'R', 'f' | 'F') if is_quote(self.cursor.second()) => {
-                self.cursor.bump();
-                let quote = self.cursor.bump().unwrap();
-                return Ok(self.lex_fstring_start(quote, true));
-            }
-            ('f' | 'F', 'r' | 'R') if is_quote(self.cursor.second()) => {
+            ('r' | 'R', 'f' | 'F') | ('f' | 'F', 'r' | 'R') if is_quote(self.cursor.second()) => {
                 self.cursor.bump();
                 let quote = self.cursor.bump().unwrap();
                 return Ok(self.lex_fstring_start(quote, true));
@@ -194,6 +192,25 @@ impl<'source> Lexer<'source> {
             }
             (_, second @ ('r' | 'R' | 'b' | 'B')) if is_quote(self.cursor.second()) => {
                 self.cursor.bump();
+                if let Ok(string_kind) = StringKind::try_from([first, second]) {
+                    let quote = self.cursor.bump().unwrap();
+                    return self.lex_string(string_kind, quote);
+                }
+            }
+            _ => {}
+        }
+
+        #[cfg(not(feature = "pep-701"))]
+        match self.cursor.first() {
+            quote @ ('\'' | '"') => {
+                if let Ok(string_kind) = StringKind::try_from(first) {
+                    self.cursor.bump();
+                    return self.lex_string(string_kind, quote);
+                }
+            }
+            second @ ('f' | 'F' | 'r' | 'R' | 'b' | 'B') if is_quote(self.cursor.second()) => {
+                self.cursor.bump();
+
                 if let Ok(string_kind) = StringKind::try_from([first, second]) {
                     let quote = self.cursor.bump().unwrap();
                     return self.lex_string(string_kind, quote);
@@ -525,6 +542,7 @@ impl<'source> Lexer<'source> {
     }
 
     /// Lex a f-string start token.
+    #[cfg(feature = "pep-701")]
     fn lex_fstring_start(&mut self, quote: char, is_raw_string: bool) -> Tok {
         #[cfg(debug_assertions)]
         debug_assert_eq!(self.cursor.previous(), quote);
@@ -546,6 +564,7 @@ impl<'source> Lexer<'source> {
         Tok::FStringStart
     }
 
+    #[cfg(feature = "pep-701")]
     fn lex_fstring_middle_or_end(&mut self) -> Result<Option<Tok>, LexicalError> {
         // SAFETY: Safe because the function is only called when `self.fstring_stack` is not empty.
         let context = self.fstring_stack.last().unwrap();
@@ -686,6 +705,7 @@ impl<'source> Lexer<'source> {
         // string; consume those two characters and ensure that we require a triple-quote to close
         let triple_quoted = self.cursor.eat_char2(quote, quote);
 
+        #[cfg(feature = "pep-701")]
         if let Some(fstring_context) = self.fstring_stack.last() {
             // When we are in an f-string, check whether does the initial quote
             // matches with f-strings quotes and if it is, then this must be a
@@ -763,6 +783,7 @@ impl<'source> Lexer<'source> {
     // This is the main entry point. Call this function to retrieve the next token.
     // This function is used by the iterator implementation.
     pub fn next_token(&mut self) -> LexResult {
+        #[cfg(feature = "pep-701")]
         if let Some(fstring_context) = self.fstring_stack.last() {
             if !fstring_context.is_in_expression() {
                 self.cursor.start_token();
@@ -1045,11 +1066,18 @@ impl<'source> Lexer<'source> {
                 if self.cursor.eat_char('=') {
                     Tok::NotEqual
                 } else {
+                    #[cfg(not(feature = "pep-701"))]
+                    return Err(LexicalError {
+                        error: LexicalErrorType::UnrecognizedToken { tok: '!' },
+                        location: self.token_start(),
+                    });
+                    #[cfg(feature = "pep-701")]
                     Tok::Exclamation
                 }
             }
             '~' => Tok::Tilde,
             '(' => {
+                #[cfg(feature = "pep-701")]
                 if let Some(fstring_context) = self.fstring_stack.last_mut() {
                     fstring_context.increment_opening_parentheses();
                 }
@@ -1057,6 +1085,7 @@ impl<'source> Lexer<'source> {
                 Tok::Lpar
             }
             ')' => {
+                #[cfg(feature = "pep-701")]
                 if let Some(fstring_context) = self.fstring_stack.last_mut() {
                     fstring_context.decrement_closing_parentheses();
                 }
@@ -1064,6 +1093,7 @@ impl<'source> Lexer<'source> {
                 Tok::Rpar
             }
             '[' => {
+                #[cfg(feature = "pep-701")]
                 if let Some(fstring_context) = self.fstring_stack.last_mut() {
                     fstring_context.increment_opening_parentheses();
                 }
@@ -1071,6 +1101,7 @@ impl<'source> Lexer<'source> {
                 Tok::Lsqb
             }
             ']' => {
+                #[cfg(feature = "pep-701")]
                 if let Some(fstring_context) = self.fstring_stack.last_mut() {
                     fstring_context.decrement_closing_parentheses();
                 }
@@ -1078,6 +1109,7 @@ impl<'source> Lexer<'source> {
                 Tok::Rsqb
             }
             '{' => {
+                #[cfg(feature = "pep-701")]
                 if let Some(fstring_context) = self.fstring_stack.last_mut() {
                     fstring_context.increment_opening_parentheses();
                 }
@@ -1085,6 +1117,7 @@ impl<'source> Lexer<'source> {
                 Tok::Lbrace
             }
             '}' => {
+                #[cfg(feature = "pep-701")]
                 if let Some(fstring_context) = self.fstring_stack.last_mut() {
                     if !fstring_context.has_open_parentheses() {
                         return Err(LexicalError {
@@ -1098,6 +1131,7 @@ impl<'source> Lexer<'source> {
                 Tok::Rbrace
             }
             ':' => {
+                #[cfg(feature = "pep-701")]
                 if self
                     .fstring_stack
                     .last_mut()
@@ -1105,6 +1139,12 @@ impl<'source> Lexer<'source> {
                 {
                     Tok::Colon
                 } else if self.cursor.eat_char('=') {
+                    Tok::ColonEqual
+                } else {
+                    Tok::Colon
+                }
+                #[cfg(not(feature = "pep-701"))]
+                if self.cursor.eat_char('=') {
                     Tok::ColonEqual
                 } else {
                     Tok::Colon
@@ -1338,11 +1378,13 @@ impl std::fmt::Display for LexicalErrorType {
 }
 
 #[derive(Copy, Clone, Debug)]
+#[cfg(feature = "pep-701")]
 enum StringQuoteChar {
     Single,
     Double,
 }
 
+#[cfg(feature = "pep-701")]
 impl TryFrom<char> for StringQuoteChar {
     type Error = String;
 
@@ -1355,6 +1397,7 @@ impl TryFrom<char> for StringQuoteChar {
     }
 }
 
+#[cfg(feature = "pep-701")]
 impl StringQuoteChar {
     const fn as_char(self) -> char {
         match self {
@@ -1365,12 +1408,14 @@ impl StringQuoteChar {
 }
 
 #[derive(Copy, Clone, Debug)]
+#[cfg(feature = "pep-701")]
 enum StringQuoteSize {
     Single,
     Triple,
 }
 
 #[derive(Debug)]
+#[cfg(feature = "pep-701")]
 struct FStringContext {
     quote_char: StringQuoteChar,
     quote_size: StringQuoteSize,
@@ -1379,6 +1424,7 @@ struct FStringContext {
     is_raw_string: bool,
 }
 
+#[cfg(feature = "pep-701")]
 impl FStringContext {
     fn new(quote_char: StringQuoteChar, quote_size: StringQuoteSize, is_raw_string: bool) -> Self {
         Self {
@@ -2017,30 +2063,35 @@ def f(arg=%timeit a = b):
     }
 
     #[test]
+    #[cfg(feature = "pep-701")]
     fn test_empty_fstrings() {
         let source = r#"f"" "" F"" f'' '' f"""""" f''''''"#;
         assert_debug_snapshot!(lex_source(source));
     }
 
     #[test]
+    #[cfg(feature = "pep-701")]
     fn test_fstring_prefix() {
         let source = r#"f"" F"" rf"" rF"" Rf"" RF"" fr"" Fr"" fR"" FR"""#;
         assert_debug_snapshot!(lex_source(source));
     }
 
     #[test]
+    #[cfg(feature = "pep-701")]
     fn test_fstring() {
         let source = r#"f"normal {foo} {{another}} {bar} {{{three}}}""#;
         assert_debug_snapshot!(lex_source(source));
     }
 
     #[test]
+    #[cfg(feature = "pep-701")]
     fn test_fstring_parentheses() {
         let source = r#"f"{}" f"{{}}" f" {}" f"{{{}}}" f"{{{{}}}}" f" {} {{}} {{{}}} {{{{}}}}  ""#;
         assert_debug_snapshot!(lex_source(source));
     }
 
     #[test]
+    #[cfg(feature = "pep-701")]
     fn test_fstring_escape() {
         let source = r#"f"\{x:\"\{x}} \"\"\
  end""#;
@@ -2048,6 +2099,7 @@ def f(arg=%timeit a = b):
     }
 
     #[test]
+    #[cfg(feature = "pep-701")]
     fn test_fstring_escape_raw() {
         let source = r#"rf"\{x:\"\{x}} \"\"\
  end""#;
@@ -2055,42 +2107,49 @@ def f(arg=%timeit a = b):
     }
 
     #[test]
+    #[cfg(feature = "pep-701")]
     fn test_fstring_named_unicode() {
         let source = r#"f"\N{BULLET} normal \Nope \N""#;
         assert_debug_snapshot!(lex_source(source));
     }
 
     #[test]
+    #[cfg(feature = "pep-701")]
     fn test_fstring_named_unicode_raw() {
         let source = r#"rf"\N{BULLET} normal""#;
         assert_debug_snapshot!(lex_source(source));
     }
 
     #[test]
+    #[cfg(feature = "pep-701")]
     fn test_fstring_with_named_expression() {
         let source = r#"f"{x:=10} {(x:=10)} {x,{y:=10}} {[x:=10]}""#;
         assert_debug_snapshot!(lex_source(source));
     }
 
     #[test]
+    #[cfg(feature = "pep-701")]
     fn test_fstring_with_format_spec() {
         let source = r#"f"{foo:} {x=!s:.3f} {x:.{y}f} {'':*^{1:{1}}}""#;
         assert_debug_snapshot!(lex_source(source));
     }
 
     #[test]
+    #[cfg(feature = "pep-701")]
     fn test_fstring_conversion() {
         let source = r#"f"{x!s} {x=!r} {x:.3f!r} {{x!r}}""#;
         assert_debug_snapshot!(lex_source(source));
     }
 
     #[test]
+    #[cfg(feature = "pep-701")]
     fn test_fstring_nested() {
         let source = r#"f"foo {f"bar {x + f"{wow}"}"} baz" f'foo {f'bar'} some {f"another"}'"#;
         assert_debug_snapshot!(lex_source(source));
     }
 
     #[test]
+    #[cfg(feature = "pep-701")]
     fn test_fstring_expression_multiline() {
         let source = r#"f"first {
     x
@@ -2101,6 +2160,7 @@ def f(arg=%timeit a = b):
     }
 
     #[test]
+    #[cfg(feature = "pep-701")]
     fn test_fstring_multiline() {
         let source = r#"f"""
 hello
@@ -2114,6 +2174,7 @@ allowed {x}"""} string""#;
     }
 
     #[test]
+    #[cfg(feature = "pep-701")]
     fn test_fstring_comments() {
         let source = r#"f"""
 # not a comment { # comment {
@@ -2124,11 +2185,13 @@ allowed {x}"""} string""#;
     }
 
     #[test]
+    #[cfg(feature = "pep-701")]
     fn test_fstring_with_ipy_escape_command() {
         let source = r#"f"foo {!pwd} bar""#;
         assert_debug_snapshot!(lex_source(source));
     }
 
+    #[cfg(feature = "pep-701")]
     fn lex_fstring_error(source: &str) -> FStringErrorType {
         match lex(source, Mode::Module).find_map(std::result::Result::err) {
             Some(err) => match err.error {
@@ -2140,6 +2203,7 @@ allowed {x}"""} string""#;
     }
 
     #[test]
+    #[cfg(feature = "pep-701")]
     fn test_fstring_error() {
         use FStringErrorType::{
             UnclosedLbrace, UnterminatedString, UnterminatedTripleQuotedString,
