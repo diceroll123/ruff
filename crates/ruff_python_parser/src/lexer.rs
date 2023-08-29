@@ -40,6 +40,7 @@ use unic_emoji_char::is_emoji_presentation;
 use unic_ucd_ident::{is_xid_continue, is_xid_start};
 
 use crate::lexer::cursor::{Cursor, EOF_CHAR};
+#[cfg(feature = "pep-701")]
 use crate::lexer::fstring::{FStringContext, FStringContextFlags};
 use crate::lexer::indentation::{Indentation, Indentations};
 use crate::{
@@ -50,6 +51,7 @@ use crate::{
 };
 
 mod cursor;
+#[cfg(feature = "pep-701")]
 mod fstring;
 mod indentation;
 
