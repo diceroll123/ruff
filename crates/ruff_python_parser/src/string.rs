@@ -745,7 +745,7 @@ impl std::fmt::Display for FStringErrorType {
         use FStringErrorType::{
             EmptyExpression, ExpressionCannotInclude, ExpressionNestedTooDeeply,
             InvalidConversionFlag, InvalidExpression, MismatchedDelimiter, SingleRbrace,
-            UnclosedLbrace, Unmatched, UnterminatedString, UnterminatedTripleQuotedString
+            UnclosedLbrace, Unmatched, UnterminatedString, UnterminatedTripleQuotedString,
         };
         match self {
             UnclosedLbrace => write!(f, "expecting '}}'"),
