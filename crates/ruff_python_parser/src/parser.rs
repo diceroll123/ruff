@@ -416,7 +416,6 @@ mod tests {
     }
 
     #[test]
-    #[cfg(not(feature = "pep-701"))]
     fn test_parse_f_string() {
         let source = "f'Hello world'";
         let parse_ast = parse_suite(source, "<test>").unwrap();
@@ -699,9 +698,9 @@ array[3:5, *indexes_to_select]
             r#"try:
     raise ValueError(1)
 except TypeError as e:
-    print('caught', type(e))
+    print(f'caught {type(e)}')
 except OSError as e:
-    print('caught', type(e))"#,
+    print(f'caught {type(e)}')"#,
             "<test>",
         )
         .unwrap();
@@ -715,9 +714,9 @@ except OSError as e:
     raise ExceptionGroup("eg",
         [ValueError(1), TypeError(2), OSError(3), OSError(4)])
 except* TypeError as e:
-    print('caught', type(e), 'with nested', e.exceptions)
+    print(f'caught {type(e)} with nested {e.exceptions}')
 except* OSError as e:
-    print('caught', type(e), 'with nested', e.exceptions)"#,
+    print(f'caught {type(e)} with nested {e.exceptions}')"#,
             "<test>",
         )
         .unwrap();

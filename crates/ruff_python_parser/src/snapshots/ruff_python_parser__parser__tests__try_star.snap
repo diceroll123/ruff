@@ -198,70 +198,94 @@ expression: parse_ast
                                             arguments: Arguments {
                                                 range: 132..180,
                                                 args: [
-                                                    Constant(
-                                                        ExprConstant {
-                                                            range: 133..141,
-                                                            value: Str(
-                                                                StringConstant {
-                                                                    value: "caught",
-                                                                    implicit_concatenated: false,
-                                                                },
-                                                            ),
-                                                            kind: None,
-                                                        },
-                                                    ),
-                                                    Call(
-                                                        ExprCall {
-                                                            range: 143..150,
-                                                            func: Name(
-                                                                ExprName {
-                                                                    range: 143..147,
-                                                                    id: "type",
-                                                                    ctx: Load,
-                                                                },
-                                                            ),
-                                                            arguments: Arguments {
-                                                                range: 147..150,
-                                                                args: [
-                                                                    Name(
-                                                                        ExprName {
-                                                                            range: 148..149,
-                                                                            id: "e",
-                                                                            ctx: Load,
-                                                                        },
-                                                                    ),
-                                                                ],
-                                                                keywords: [],
-                                                            },
-                                                        },
-                                                    ),
-                                                    Constant(
-                                                        ExprConstant {
-                                                            range: 152..165,
-                                                            value: Str(
-                                                                StringConstant {
-                                                                    value: "with nested",
-                                                                    implicit_concatenated: false,
-                                                                },
-                                                            ),
-                                                            kind: None,
-                                                        },
-                                                    ),
-                                                    Attribute(
-                                                        ExprAttribute {
-                                                            range: 167..179,
-                                                            value: Name(
-                                                                ExprName {
-                                                                    range: 167..168,
-                                                                    id: "e",
-                                                                    ctx: Load,
-                                                                },
-                                                            ),
-                                                            attr: Identifier {
-                                                                id: "exceptions",
-                                                                range: 169..179,
-                                                            },
-                                                            ctx: Load,
+                                                    FString(
+                                                        ExprFString {
+                                                            range: 133..179,
+                                                            values: [
+                                                                Constant(
+                                                                    ExprConstant {
+                                                                        range: 135..142,
+                                                                        value: Str(
+                                                                            StringConstant {
+                                                                                value: "caught ",
+                                                                                implicit_concatenated: false,
+                                                                            },
+                                                                        ),
+                                                                        kind: None,
+                                                                    },
+                                                                ),
+                                                                FormattedValue(
+                                                                    ExprFormattedValue {
+                                                                        range: 142..151,
+                                                                        value: Call(
+                                                                            ExprCall {
+                                                                                range: 143..150,
+                                                                                func: Name(
+                                                                                    ExprName {
+                                                                                        range: 143..147,
+                                                                                        id: "type",
+                                                                                        ctx: Load,
+                                                                                    },
+                                                                                ),
+                                                                                arguments: Arguments {
+                                                                                    range: 147..150,
+                                                                                    args: [
+                                                                                        Name(
+                                                                                            ExprName {
+                                                                                                range: 148..149,
+                                                                                                id: "e",
+                                                                                                ctx: Load,
+                                                                                            },
+                                                                                        ),
+                                                                                    ],
+                                                                                    keywords: [],
+                                                                                },
+                                                                            },
+                                                                        ),
+                                                                        debug_text: None,
+                                                                        conversion: None,
+                                                                        format_spec: None,
+                                                                    },
+                                                                ),
+                                                                Constant(
+                                                                    ExprConstant {
+                                                                        range: 151..164,
+                                                                        value: Str(
+                                                                            StringConstant {
+                                                                                value: " with nested ",
+                                                                                implicit_concatenated: false,
+                                                                            },
+                                                                        ),
+                                                                        kind: None,
+                                                                    },
+                                                                ),
+                                                                FormattedValue(
+                                                                    ExprFormattedValue {
+                                                                        range: 164..178,
+                                                                        value: Attribute(
+                                                                            ExprAttribute {
+                                                                                range: 165..177,
+                                                                                value: Name(
+                                                                                    ExprName {
+                                                                                        range: 165..166,
+                                                                                        id: "e",
+                                                                                        ctx: Load,
+                                                                                    },
+                                                                                ),
+                                                                                attr: Identifier {
+                                                                                    id: "exceptions",
+                                                                                    range: 167..177,
+                                                                                },
+                                                                                ctx: Load,
+                                                                            },
+                                                                        ),
+                                                                        debug_text: None,
+                                                                        conversion: None,
+                                                                        format_spec: None,
+                                                                    },
+                                                                ),
+                                                            ],
+                                                            implicit_concatenated: false,
                                                         },
                                                     ),
                                                 ],
@@ -309,70 +333,94 @@ expression: parse_ast
                                             arguments: Arguments {
                                                 range: 212..260,
                                                 args: [
-                                                    Constant(
-                                                        ExprConstant {
-                                                            range: 213..221,
-                                                            value: Str(
-                                                                StringConstant {
-                                                                    value: "caught",
-                                                                    implicit_concatenated: false,
-                                                                },
-                                                            ),
-                                                            kind: None,
-                                                        },
-                                                    ),
-                                                    Call(
-                                                        ExprCall {
-                                                            range: 223..230,
-                                                            func: Name(
-                                                                ExprName {
-                                                                    range: 223..227,
-                                                                    id: "type",
-                                                                    ctx: Load,
-                                                                },
-                                                            ),
-                                                            arguments: Arguments {
-                                                                range: 227..230,
-                                                                args: [
-                                                                    Name(
-                                                                        ExprName {
-                                                                            range: 228..229,
-                                                                            id: "e",
-                                                                            ctx: Load,
-                                                                        },
-                                                                    ),
-                                                                ],
-                                                                keywords: [],
-                                                            },
-                                                        },
-                                                    ),
-                                                    Constant(
-                                                        ExprConstant {
-                                                            range: 232..245,
-                                                            value: Str(
-                                                                StringConstant {
-                                                                    value: "with nested",
-                                                                    implicit_concatenated: false,
-                                                                },
-                                                            ),
-                                                            kind: None,
-                                                        },
-                                                    ),
-                                                    Attribute(
-                                                        ExprAttribute {
-                                                            range: 247..259,
-                                                            value: Name(
-                                                                ExprName {
-                                                                    range: 247..248,
-                                                                    id: "e",
-                                                                    ctx: Load,
-                                                                },
-                                                            ),
-                                                            attr: Identifier {
-                                                                id: "exceptions",
-                                                                range: 249..259,
-                                                            },
-                                                            ctx: Load,
+                                                    FString(
+                                                        ExprFString {
+                                                            range: 213..259,
+                                                            values: [
+                                                                Constant(
+                                                                    ExprConstant {
+                                                                        range: 215..222,
+                                                                        value: Str(
+                                                                            StringConstant {
+                                                                                value: "caught ",
+                                                                                implicit_concatenated: false,
+                                                                            },
+                                                                        ),
+                                                                        kind: None,
+                                                                    },
+                                                                ),
+                                                                FormattedValue(
+                                                                    ExprFormattedValue {
+                                                                        range: 222..231,
+                                                                        value: Call(
+                                                                            ExprCall {
+                                                                                range: 223..230,
+                                                                                func: Name(
+                                                                                    ExprName {
+                                                                                        range: 223..227,
+                                                                                        id: "type",
+                                                                                        ctx: Load,
+                                                                                    },
+                                                                                ),
+                                                                                arguments: Arguments {
+                                                                                    range: 227..230,
+                                                                                    args: [
+                                                                                        Name(
+                                                                                            ExprName {
+                                                                                                range: 228..229,
+                                                                                                id: "e",
+                                                                                                ctx: Load,
+                                                                                            },
+                                                                                        ),
+                                                                                    ],
+                                                                                    keywords: [],
+                                                                                },
+                                                                            },
+                                                                        ),
+                                                                        debug_text: None,
+                                                                        conversion: None,
+                                                                        format_spec: None,
+                                                                    },
+                                                                ),
+                                                                Constant(
+                                                                    ExprConstant {
+                                                                        range: 231..244,
+                                                                        value: Str(
+                                                                            StringConstant {
+                                                                                value: " with nested ",
+                                                                                implicit_concatenated: false,
+                                                                            },
+                                                                        ),
+                                                                        kind: None,
+                                                                    },
+                                                                ),
+                                                                FormattedValue(
+                                                                    ExprFormattedValue {
+                                                                        range: 244..258,
+                                                                        value: Attribute(
+                                                                            ExprAttribute {
+                                                                                range: 245..257,
+                                                                                value: Name(
+                                                                                    ExprName {
+                                                                                        range: 245..246,
+                                                                                        id: "e",
+                                                                                        ctx: Load,
+                                                                                    },
+                                                                                ),
+                                                                                attr: Identifier {
+                                                                                    id: "exceptions",
+                                                                                    range: 247..257,
+                                                                                },
+                                                                                ctx: Load,
+                                                                            },
+                                                                        ),
+                                                                        debug_text: None,
+                                                                        conversion: None,
+                                                                        format_spec: None,
+                                                                    },
+                                                                ),
+                                                            ],
+                                                            implicit_concatenated: false,
                                                         },
                                                     ),
                                                 ],

@@ -4,7 +4,6 @@ use ruff_text_size::TextSize;
 
 bitflags! {
     #[derive(Debug)]
-    #[cfg(feature = "pep-701")]
     pub(crate) struct FStringContextFlags: u32 {
         /// The current f-string is a triple-quoted f-string i.e., the number of
         /// opening and closing quotes is 3. If this flag is not set, the number
@@ -22,7 +21,6 @@ bitflags! {
 }
 
 #[derive(Debug)]
-#[cfg(feature = "pep-701")]
 pub(crate) struct FStringContext {
     flags: FStringContextFlags,
     /// The number of open parentheses for the current f-string. This includes all
@@ -34,7 +32,6 @@ pub(crate) struct FStringContext {
     format_spec_depth: u32,
 }
 
-#[cfg(feature = "pep-701")]
 impl FStringContext {
     pub(crate) fn new(flags: FStringContextFlags) -> Self {
         Self {

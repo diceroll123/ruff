@@ -951,7 +951,6 @@ mod tests {
     }
 
     #[test]
-    #[cfg(not(feature = "pep-701"))]
     fn test_parse_f_string_concat_1() {
         let source = "'Hello ' f'world'";
         let parse_ast = parse_suite(source, "<test>").unwrap();
@@ -959,7 +958,6 @@ mod tests {
     }
 
     #[test]
-    #[cfg(not(feature = "pep-701"))]
     fn test_parse_f_string_concat_2() {
         let source = "'Hello ' f'world'";
         let parse_ast = parse_suite(source, "<test>").unwrap();
@@ -967,7 +965,6 @@ mod tests {
     }
 
     #[test]
-    #[cfg(not(feature = "pep-701"))]
     fn test_parse_f_string_concat_3() {
         let source = "'Hello ' f'world{\"!\"}'";
         let parse_ast = parse_suite(source, "<test>").unwrap();
@@ -975,7 +972,6 @@ mod tests {
     }
 
     #[test]
-    #[cfg(not(feature = "pep-701"))]
     fn test_parse_f_string_concat_4() {
         let source = "'Hello ' f'world{\"!\"}' 'again!'";
         let parse_ast = parse_suite(source, "<test>").unwrap();
@@ -983,7 +979,6 @@ mod tests {
     }
 
     #[test]
-    #[cfg(not(feature = "pep-701"))]
     fn test_parse_u_f_string_concat_1() {
         let source = "u'Hello ' f'world'";
         let parse_ast = parse_suite(source, "<test>").unwrap();
@@ -991,7 +986,6 @@ mod tests {
     }
 
     #[test]
-    #[cfg(not(feature = "pep-701"))]
     fn test_parse_u_f_string_concat_2() {
         let source = "u'Hello ' f'world' '!'";
         let parse_ast = parse_suite(source, "<test>").unwrap();
@@ -1051,7 +1045,6 @@ mod tests {
     }
 
     #[test]
-    #[cfg(not(feature = "pep-701"))]
     fn test_fstring_escaped_newline() {
         let source = r#"f"\n{x}""#;
         let parse_ast = parse_suite(source, "<test>").unwrap();
@@ -1059,7 +1052,6 @@ mod tests {
     }
 
     #[test]
-    #[cfg(not(feature = "pep-701"))]
     fn test_fstring_constant_range() {
         let source = r#"f"aaa{bbb}ccc{ddd}eee""#;
         let parse_ast = parse_suite(source, "<test>").unwrap();
@@ -1067,7 +1059,6 @@ mod tests {
     }
 
     #[test]
-    #[cfg(not(feature = "pep-701"))]
     fn test_fstring_unescaped_newline() {
         let source = r#"f"""
 {x}""""#;
@@ -1076,7 +1067,6 @@ mod tests {
     }
 
     #[test]
-    #[cfg(not(feature = "pep-701"))]
     fn test_fstring_escaped_character() {
         let source = r#"f"\\{x}""#;
         let parse_ast = parse_suite(source, "<test>").unwrap();
@@ -1084,7 +1074,6 @@ mod tests {
     }
 
     #[test]
-    #[cfg(not(feature = "pep-701"))]
     fn test_raw_fstring() {
         let source = r#"rf"{x}""#;
         let parse_ast = parse_suite(source, "<test>").unwrap();
@@ -1092,7 +1081,6 @@ mod tests {
     }
 
     #[test]
-    #[cfg(not(feature = "pep-701"))]
     fn test_triple_quoted_raw_fstring() {
         let source = r#"rf"""{x}""""#;
         let parse_ast = parse_suite(source, "<test>").unwrap();
@@ -1100,7 +1088,6 @@ mod tests {
     }
 
     #[test]
-    #[cfg(not(feature = "pep-701"))]
     fn test_fstring_line_continuation() {
         let source = r#"rf"\
 {x}""#;

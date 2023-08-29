@@ -46,11 +46,9 @@ pub enum Tok {
     },
     /// Token value for the start of an f-string. This includes the `f`/`F`/`fr` prefix
     /// and the opening quote(s).
-    #[cfg(feature = "pep-701")]
     FStringStart,
     /// Token value that includes the portion of text inside the f-string that's not
     /// part of the expression part and isn't an opening or closing brace.
-    #[cfg(feature = "pep-701")]
     FStringMiddle {
         /// The string value.
         value: String,
@@ -58,7 +56,6 @@ pub enum Tok {
         is_raw: bool,
     },
     /// Token value for the end of an f-string. This includes the closing quote.
-    #[cfg(feature = "pep-701")]
     FStringEnd,
     /// Token value for IPython escape commands. These are recognized by the lexer
     /// only when the mode is [`Mode::Jupyter`].
@@ -83,7 +80,6 @@ pub enum Tok {
     /// Token value for a question mark `?`. This is only used in [`Mode::Jupyter`].
     Question,
     /// Token value for a exclamation mark `!`.
-    #[cfg(feature = "pep-701")]
     Exclamation,
     /// Token value for a left parenthesis `(`.
     Lpar,
@@ -253,11 +249,8 @@ impl fmt::Display for Tok {
                 let quotes = "\"".repeat(if *triple_quoted { 3 } else { 1 });
                 write!(f, "{kind}{quotes}{value}{quotes}")
             }
-            #[cfg(feature = "pep-701")]
             FStringStart => f.write_str("FStringStart"),
-            #[cfg(feature = "pep-701")]
             FStringMiddle { value, .. } => f.write_str(value),
-            #[cfg(feature = "pep-701")]
             FStringEnd => f.write_str("FStringEnd"),
             IpyEscapeCommand { kind, value } => write!(f, "{kind}{value}"),
             Newline => f.write_str("Newline"),
@@ -268,7 +261,6 @@ impl fmt::Display for Tok {
             StartExpression => f.write_str("StartExpression"),
             EndOfFile => f.write_str("EOF"),
             Question => f.write_str("'?'"),
-            #[cfg(feature = "pep-701")]
             Exclamation => f.write_str("'!'"),
             Lpar => f.write_str("'('"),
             Rpar => f.write_str("')'"),
@@ -479,14 +471,11 @@ pub enum TokenKind {
     String,
     /// Token value for the start of an f-string. This includes the `f`/`F`/`fr` prefix
     /// and the opening quote(s).
-    #[cfg(feature = "pep-701")]
     FStringStart,
     /// Token value that includes the portion of text inside the f-string that's not
     /// part of the expression part and isn't an opening or closing brace.
-    #[cfg(feature = "pep-701")]
     FStringMiddle,
     /// Token value for the end of an f-string. This includes the closing quote.
-    #[cfg(feature = "pep-701")]
     FStringEnd,
     /// Token value for a IPython escape command.
     EscapeCommand,
@@ -505,7 +494,6 @@ pub enum TokenKind {
     /// Token value for a question mark `?`.
     Question,
     /// Token value for an exclamation mark `!`.
-    #[cfg(feature = "pep-701")]
     Exclamation,
     /// Token value for a left parenthesis `(`.
     Lpar,
@@ -822,11 +810,8 @@ impl TokenKind {
             Tok::Float { .. } => TokenKind::Float,
             Tok::Complex { .. } => TokenKind::Complex,
             Tok::String { .. } => TokenKind::String,
-            #[cfg(feature = "pep-701")]
             Tok::FStringStart => TokenKind::FStringStart,
-            #[cfg(feature = "pep-701")]
             Tok::FStringMiddle { .. } => TokenKind::FStringMiddle,
-            #[cfg(feature = "pep-701")]
             Tok::FStringEnd => TokenKind::FStringEnd,
             Tok::IpyEscapeCommand { .. } => TokenKind::EscapeCommand,
             Tok::Comment(_) => TokenKind::Comment,
@@ -836,7 +821,6 @@ impl TokenKind {
             Tok::Dedent => TokenKind::Dedent,
             Tok::EndOfFile => TokenKind::EndOfFile,
             Tok::Question => TokenKind::Question,
-            #[cfg(feature = "pep-701")]
             Tok::Exclamation => TokenKind::Exclamation,
             Tok::Lpar => TokenKind::Lpar,
             Tok::Rpar => TokenKind::Rpar,
