@@ -556,9 +556,7 @@ impl<'source> Lexer<'source> {
         if is_raw_string {
             flags |= FStringContextFlags::RAW;
         }
-        if self.cursor.first() == quote && self.cursor.second() == quote {
-            self.cursor.bump();
-            self.cursor.bump();
+        if self.cursor.eat_char2(quote, quote) {
             flags |= FStringContextFlags::TRIPLE;
         };
 
@@ -645,8 +643,8 @@ impl<'source> Lexer<'source> {
                         self.cursor.bump();
                         normalized
                             .push_str(&self.source[TextRange::new(last_offset, self.offset())]);
-                        self.cursor.bump();
-                        last_offset = self.offset(); // Skip the second `{`
+                        self.cursor.bump(); // Skip the second `{`
+                        last_offset = self.offset();
                     } else {
                         break;
                     }
@@ -659,8 +657,8 @@ impl<'source> Lexer<'source> {
                         self.cursor.bump();
                         normalized
                             .push_str(&self.source[TextRange::new(last_offset, self.offset())]);
-                        self.cursor.bump();
-                        last_offset = self.offset(); // Skip the second `}`
+                        self.cursor.bump(); // Skip the second `}`
+                        last_offset = self.offset();
                     } else {
                         break;
                     }

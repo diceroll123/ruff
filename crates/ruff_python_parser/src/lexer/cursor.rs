@@ -85,7 +85,6 @@ impl<'a> Cursor<'a> {
         }
     }
 
-    #[cfg(feature = "pep-701")]
     pub(super) fn eat_char2(&mut self, c1: char, c2: char) -> bool {
         let mut chars = self.chars.clone();
         if chars.next() == Some(c1) && chars.next() == Some(c2) {
