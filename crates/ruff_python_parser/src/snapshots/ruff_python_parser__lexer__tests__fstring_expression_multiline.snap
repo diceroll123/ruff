@@ -4,9 +4,10 @@ expression: lex_source(source)
 ---
 [
     FStringStart,
-    FStringMiddle(
-        "first ",
-    ),
+    FStringMiddle {
+        value: "first ",
+        is_raw: false,
+    },
     Lbrace,
     NonLogicalNewline,
     Name {
@@ -20,9 +21,10 @@ expression: lex_source(source)
     },
     NonLogicalNewline,
     Rbrace,
-    FStringMiddle(
-        " second",
-    ),
+    FStringMiddle {
+        value: " second",
+        is_raw: false,
+    },
     FStringEnd,
     Newline,
 ]

@@ -4,18 +4,20 @@ expression: lex_source(source)
 ---
 [
     FStringStart,
-    FStringMiddle(
-        "foo ",
-    ),
+    FStringMiddle {
+        value: "foo ",
+        is_raw: false,
+    },
     Lbrace,
     Exclamation,
     Name {
         name: "pwd",
     },
     Rbrace,
-    FStringMiddle(
-        " bar",
-    ),
+    FStringMiddle {
+        value: " bar",
+        is_raw: false,
+    },
     FStringEnd,
     Newline,
 ]

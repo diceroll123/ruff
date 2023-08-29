@@ -10,9 +10,10 @@ expression: lex_source(source)
     },
     Colon,
     Rbrace,
-    FStringMiddle(
-        " ",
-    ),
+    FStringMiddle {
+        value: " ",
+        is_raw: false,
+    },
     Lbrace,
     Name {
         name: "x",
@@ -23,33 +24,38 @@ expression: lex_source(source)
         name: "s",
     },
     Colon,
-    FStringMiddle(
-        ".3f",
-    ),
+    FStringMiddle {
+        value: ".3f",
+        is_raw: false,
+    },
     Rbrace,
-    FStringMiddle(
-        " ",
-    ),
+    FStringMiddle {
+        value: " ",
+        is_raw: false,
+    },
     Lbrace,
     Name {
         name: "x",
     },
     Colon,
-    FStringMiddle(
-        ".",
-    ),
+    FStringMiddle {
+        value: ".",
+        is_raw: false,
+    },
     Lbrace,
     Name {
         name: "y",
     },
     Rbrace,
-    FStringMiddle(
-        "f",
-    ),
+    FStringMiddle {
+        value: "f",
+        is_raw: false,
+    },
     Rbrace,
-    FStringMiddle(
-        " ",
-    ),
+    FStringMiddle {
+        value: " ",
+        is_raw: false,
+    },
     Lbrace,
     String {
         value: "",
@@ -57,9 +63,10 @@ expression: lex_source(source)
         triple_quoted: false,
     },
     Colon,
-    FStringMiddle(
-        "*^",
-    ),
+    FStringMiddle {
+        value: "*^",
+        is_raw: false,
+    },
     Lbrace,
     Int {
         value: 1,

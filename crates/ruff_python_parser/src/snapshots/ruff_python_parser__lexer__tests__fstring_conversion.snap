@@ -13,9 +13,10 @@ expression: lex_source(source)
         name: "s",
     },
     Rbrace,
-    FStringMiddle(
-        " ",
-    ),
+    FStringMiddle {
+        value: " ",
+        is_raw: false,
+    },
     Lbrace,
     Name {
         name: "x",
@@ -26,21 +27,24 @@ expression: lex_source(source)
         name: "r",
     },
     Rbrace,
-    FStringMiddle(
-        " ",
-    ),
+    FStringMiddle {
+        value: " ",
+        is_raw: false,
+    },
     Lbrace,
     Name {
         name: "x",
     },
     Colon,
-    FStringMiddle(
-        ".3f!r",
-    ),
+    FStringMiddle {
+        value: ".3f!r",
+        is_raw: false,
+    },
     Rbrace,
-    FStringMiddle(
-        " {x!r}",
-    ),
+    FStringMiddle {
+        value: " {x!r}",
+        is_raw: false,
+    },
     FStringEnd,
     Newline,
 ]

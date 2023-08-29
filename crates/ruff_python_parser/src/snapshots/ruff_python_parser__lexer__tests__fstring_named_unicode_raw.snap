@@ -4,17 +4,19 @@ expression: lex_source(source)
 ---
 [
     FStringStart,
-    FStringMiddle(
-        "\\N",
-    ),
+    FStringMiddle {
+        value: "\\N",
+        is_raw: true,
+    },
     Lbrace,
     Name {
         name: "BULLET",
     },
     Rbrace,
-    FStringMiddle(
-        " normal",
-    ),
+    FStringMiddle {
+        value: " normal",
+        is_raw: true,
+    },
     FStringEnd,
     Newline,
 ]

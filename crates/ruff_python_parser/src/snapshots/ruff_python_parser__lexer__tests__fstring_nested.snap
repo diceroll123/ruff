@@ -4,14 +4,16 @@ expression: lex_source(source)
 ---
 [
     FStringStart,
-    FStringMiddle(
-        "foo ",
-    ),
+    FStringMiddle {
+        value: "foo ",
+        is_raw: false,
+    },
     Lbrace,
     FStringStart,
-    FStringMiddle(
-        "bar ",
-    ),
+    FStringMiddle {
+        value: "bar ",
+        is_raw: false,
+    },
     Lbrace,
     Name {
         name: "x",
@@ -27,29 +29,34 @@ expression: lex_source(source)
     Rbrace,
     FStringEnd,
     Rbrace,
-    FStringMiddle(
-        " baz",
-    ),
+    FStringMiddle {
+        value: " baz",
+        is_raw: false,
+    },
     FStringEnd,
     FStringStart,
-    FStringMiddle(
-        "foo ",
-    ),
+    FStringMiddle {
+        value: "foo ",
+        is_raw: false,
+    },
     Lbrace,
     FStringStart,
-    FStringMiddle(
-        "bar",
-    ),
+    FStringMiddle {
+        value: "bar",
+        is_raw: false,
+    },
     FStringEnd,
     Rbrace,
-    FStringMiddle(
-        " some ",
-    ),
+    FStringMiddle {
+        value: " some ",
+        is_raw: false,
+    },
     Lbrace,
     FStringStart,
-    FStringMiddle(
-        "another",
-    ),
+    FStringMiddle {
+        value: "another",
+        is_raw: false,
+    },
     FStringEnd,
     Rbrace,
     FStringEnd,

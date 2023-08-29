@@ -4,26 +4,29 @@ expression: lex_source(source)
 ---
 [
     FStringStart,
-    FStringMiddle(
-        "\\",
-    ),
+    FStringMiddle {
+        value: "\\",
+        is_raw: true,
+    },
     Lbrace,
     Name {
         name: "x",
     },
     Colon,
-    FStringMiddle(
-        "\\\"\\",
-    ),
+    FStringMiddle {
+        value: "\\\"\\",
+        is_raw: true,
+    },
     Lbrace,
     Name {
         name: "x",
     },
     Rbrace,
     Rbrace,
-    FStringMiddle(
-        " \\\"\\\"\\\n end",
-    ),
+    FStringMiddle {
+        value: " \\\"\\\"\\\n end",
+        is_raw: true,
+    },
     FStringEnd,
     Newline,
 ]

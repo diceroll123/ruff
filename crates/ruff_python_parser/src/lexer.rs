@@ -671,7 +671,10 @@ impl<'source> Lexer<'source> {
             normalized.push_str(&self.source[TextRange::new(last_offset, self.offset())]);
             normalized
         };
-        Ok(Some(Tok::FStringMiddle(value)))
+        Ok(Some(Tok::FStringMiddle {
+            value,
+            is_raw: context.is_raw_string,
+        }))
     }
 
     /// Lex a string literal.

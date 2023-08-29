@@ -4,9 +4,10 @@ expression: lex_source(source)
 ---
 [
     FStringStart,
-    FStringMiddle(
-        "\n# not a comment ",
-    ),
+    FStringMiddle {
+        value: "\n# not a comment ",
+        is_raw: false,
+    },
     Lbrace,
     Comment(
         "# comment {",
@@ -17,9 +18,10 @@ expression: lex_source(source)
     },
     NonLogicalNewline,
     Rbrace,
-    FStringMiddle(
-        " # not a comment\n",
-    ),
+    FStringMiddle {
+        value: " # not a comment\n",
+        is_raw: false,
+    },
     FStringEnd,
     Newline,
 ]

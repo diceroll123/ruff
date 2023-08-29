@@ -8,46 +8,54 @@ expression: lex_source(source)
     Rbrace,
     FStringEnd,
     FStringStart,
-    FStringMiddle(
-        "{}",
-    ),
+    FStringMiddle {
+        value: "{}",
+        is_raw: false,
+    },
     FStringEnd,
     FStringStart,
-    FStringMiddle(
-        " ",
-    ),
+    FStringMiddle {
+        value: " ",
+        is_raw: false,
+    },
     Lbrace,
     Rbrace,
     FStringEnd,
     FStringStart,
-    FStringMiddle(
-        "{",
-    ),
+    FStringMiddle {
+        value: "{",
+        is_raw: false,
+    },
     Lbrace,
     Rbrace,
-    FStringMiddle(
-        "}",
-    ),
+    FStringMiddle {
+        value: "}",
+        is_raw: false,
+    },
     FStringEnd,
     FStringStart,
-    FStringMiddle(
-        "{{}}",
-    ),
+    FStringMiddle {
+        value: "{{}}",
+        is_raw: false,
+    },
     FStringEnd,
     FStringStart,
-    FStringMiddle(
-        " ",
-    ),
+    FStringMiddle {
+        value: " ",
+        is_raw: false,
+    },
     Lbrace,
     Rbrace,
-    FStringMiddle(
-        " {} {",
-    ),
+    FStringMiddle {
+        value: " {} {",
+        is_raw: false,
+    },
     Lbrace,
     Rbrace,
-    FStringMiddle(
-        "} {{}}  ",
-    ),
+    FStringMiddle {
+        value: "} {{}}  ",
+        is_raw: false,
+    },
     FStringEnd,
     Newline,
 ]

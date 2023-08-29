@@ -4,33 +4,37 @@ expression: lex_source(source)
 ---
 [
     FStringStart,
-    FStringMiddle(
-        "normal ",
-    ),
+    FStringMiddle {
+        value: "normal ",
+        is_raw: false,
+    },
     Lbrace,
     Name {
         name: "foo",
     },
     Rbrace,
-    FStringMiddle(
-        " {another} ",
-    ),
+    FStringMiddle {
+        value: " {another} ",
+        is_raw: false,
+    },
     Lbrace,
     Name {
         name: "bar",
     },
     Rbrace,
-    FStringMiddle(
-        " {",
-    ),
+    FStringMiddle {
+        value: " {",
+        is_raw: false,
+    },
     Lbrace,
     Name {
         name: "three",
     },
     Rbrace,
-    FStringMiddle(
-        "}",
-    ),
+    FStringMiddle {
+        value: "}",
+        is_raw: false,
+    },
     FStringEnd,
     Newline,
 ]

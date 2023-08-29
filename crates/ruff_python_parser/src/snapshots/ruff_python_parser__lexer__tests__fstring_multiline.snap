@@ -4,24 +4,28 @@ expression: lex_source(source)
 ---
 [
     FStringStart,
-    FStringMiddle(
-        "\nhello\n    world\n",
-    ),
+    FStringMiddle {
+        value: "\nhello\n    world\n",
+        is_raw: false,
+    },
     FStringEnd,
     FStringStart,
-    FStringMiddle(
-        "\n    world\nhello\n",
-    ),
+    FStringMiddle {
+        value: "\n    world\nhello\n",
+        is_raw: false,
+    },
     FStringEnd,
     FStringStart,
-    FStringMiddle(
-        "some ",
-    ),
+    FStringMiddle {
+        value: "some ",
+        is_raw: false,
+    },
     Lbrace,
     FStringStart,
-    FStringMiddle(
-        "multiline\nallowed ",
-    ),
+    FStringMiddle {
+        value: "multiline\nallowed ",
+        is_raw: false,
+    },
     Lbrace,
     Name {
         name: "x",
@@ -29,9 +33,10 @@ expression: lex_source(source)
     Rbrace,
     FStringEnd,
     Rbrace,
-    FStringMiddle(
-        " string",
-    ),
+    FStringMiddle {
+        value: " string",
+        is_raw: false,
+    },
     FStringEnd,
     Newline,
 ]
