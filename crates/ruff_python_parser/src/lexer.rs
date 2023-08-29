@@ -40,6 +40,7 @@ use unic_emoji_char::is_emoji_presentation;
 use unic_ucd_ident::{is_xid_continue, is_xid_start};
 
 use crate::lexer::cursor::{Cursor, EOF_CHAR};
+use crate::lexer::fstring::{FStringContext, FStringContextFlags};
 use crate::lexer::indentation::{Indentation, Indentations};
 use crate::{
     soft_keywords::SoftKeywordTransformer,
@@ -49,6 +50,7 @@ use crate::{
 };
 
 mod cursor;
+mod fstring;
 mod indentation;
 
 /// A lexer for Python source code.
@@ -547,20 +549,20 @@ impl<'source> Lexer<'source> {
         #[cfg(debug_assertions)]
         debug_assert_eq!(self.cursor.previous(), quote);
 
-        // If the next two characters are also the quote character, then we have a triple-quoted
-        // string; consume those two characters and ensure that we require a triple-quote to close
-        let quote_size = if self.cursor.first() == quote && self.cursor.second() == quote {
+        let mut flags = FStringContextFlags::empty();
+        if quote == '"' {
+            flags |= FStringContextFlags::DOUBLE;
+        }
+        if is_raw_string {
+            flags |= FStringContextFlags::RAW;
+        }
+        if self.cursor.first() == quote && self.cursor.second() == quote {
             self.cursor.bump();
             self.cursor.bump();
-            StringQuoteSize::Triple
-        } else {
-            StringQuoteSize::Single
+            flags |= FStringContextFlags::TRIPLE;
         };
 
-        // SAFETY: Safe because `quote` is either `'` or `"`
-        let quote_char = StringQuoteChar::try_from(quote).unwrap();
-        self.fstring_stack
-            .push(FStringContext::new(quote_char, quote_size, is_raw_string));
+        self.fstring_stack.push(FStringContext::new(flags));
         Tok::FStringStart
     }
 
@@ -570,18 +572,13 @@ impl<'source> Lexer<'source> {
         let context = self.fstring_stack.last().unwrap();
 
         // Check if we're at the end of the f-string.
-        match context.quote_size {
-            StringQuoteSize::Single => {
-                if self.cursor.eat_char(context.quote_char.as_char()) {
-                    return Ok(Some(Tok::FStringEnd));
-                }
+        if context.is_triple_quoted() {
+            let quote_char = context.quote_char();
+            if self.cursor.eat_char3(quote_char, quote_char, quote_char) {
+                return Ok(Some(Tok::FStringEnd));
             }
-            StringQuoteSize::Triple => {
-                let quote_char = context.quote_char.as_char();
-                if self.cursor.eat_char3(quote_char, quote_char, quote_char) {
-                    return Ok(Some(Tok::FStringEnd));
-                }
-            }
+        } else if self.cursor.eat_char(context.quote_char()) {
+            return Ok(Some(Tok::FStringEnd));
         }
 
         // The normalized string if the token value is not yet normalized.
@@ -597,7 +594,7 @@ impl<'source> Lexer<'source> {
         loop {
             match self.cursor.first() {
                 EOF_CHAR => {
-                    let error = if context.allow_multiline() {
+                    let error = if context.is_triple_quoted() {
                         FStringErrorType::UnterminatedTripleQuotedString
                     } else {
                         FStringErrorType::UnterminatedString
@@ -610,7 +607,7 @@ impl<'source> Lexer<'source> {
                         location: self.offset(),
                     });
                 }
-                '\n' if !context.allow_multiline() => {
+                '\n' if !context.is_triple_quoted() => {
                     // This is to avoid infinite loop where the lexer keeps returning
                     // the error token.
                     self.fstring_stack.pop();
@@ -624,7 +621,7 @@ impl<'source> Lexer<'source> {
                     if matches!(self.cursor.first(), '{' | '}') {
                         // Don't consume `{` or `}` as we want them to be consumed as tokens.
                         break;
-                    } else if !context.is_raw_string {
+                    } else if !context.is_raw_string() {
                         if self.cursor.eat_char2('N', '{') {
                             in_named_unicode = true;
                             continue;
@@ -633,20 +630,15 @@ impl<'source> Lexer<'source> {
                     // Consume the escaped character.
                     self.cursor.bump();
                 }
-                quote @ ('\'' | '"') if quote == context.quote_char.as_char() => {
-                    match context.quote_size {
-                        StringQuoteSize::Single => break,
-                        StringQuoteSize::Triple => {
-                            let triple_quote = match context.quote_char {
-                                StringQuoteChar::Single => "'''",
-                                StringQuoteChar::Double => r#"""""#,
-                            };
-                            if self.cursor.rest().starts_with(triple_quote) {
-                                break;
-                            }
+                quote @ ('\'' | '"') if quote == context.quote_char() => {
+                    if let Some(triple_quotes) = context.triple_quotes() {
+                        if self.cursor.rest().starts_with(triple_quotes) {
+                            break;
                         }
+                        self.cursor.bump();
+                    } else {
+                        break;
                     }
-                    self.cursor.bump();
                 }
                 '{' => {
                     if self.cursor.second() == '{' {
@@ -692,7 +684,7 @@ impl<'source> Lexer<'source> {
         };
         Ok(Some(Tok::FStringMiddle {
             value,
-            is_raw: context.is_raw_string,
+            is_raw: context.is_raw_string(),
         }))
     }
 
@@ -710,22 +702,13 @@ impl<'source> Lexer<'source> {
             // When we are in an f-string, check whether does the initial quote
             // matches with f-strings quotes and if it is, then this must be a
             // missing '}' token so raise the proper error.
-            if fstring_context.quote_char.as_char() == quote {
-                match fstring_context.quote_size {
-                    StringQuoteSize::Single if !triple_quoted => {
-                        return Err(LexicalError {
-                            error: LexicalErrorType::FStringError(FStringErrorType::UnclosedLbrace),
-                            location: self.offset() - TextSize::new(1),
-                        });
-                    }
-                    StringQuoteSize::Triple if triple_quoted => {
-                        return Err(LexicalError {
-                            error: LexicalErrorType::FStringError(FStringErrorType::UnclosedLbrace),
-                            location: self.offset() - TextSize::new(3),
-                        });
-                    }
-                    _ => {}
-                }
+            if fstring_context.quote_char() == quote
+                && fstring_context.is_triple_quoted() == triple_quoted
+            {
+                return Err(LexicalError {
+                    error: LexicalErrorType::FStringError(FStringErrorType::UnclosedLbrace),
+                    location: self.offset() - fstring_context.quote_size(),
+                });
             }
         }
 
@@ -1373,116 +1356,6 @@ impl std::fmt::Display for LexicalErrorType {
             }
             LexicalErrorType::Eof => write!(f, "unexpected EOF while parsing"),
             LexicalErrorType::OtherError(msg) => write!(f, "{msg}"),
-        }
-    }
-}
-
-#[derive(Copy, Clone, Debug)]
-#[cfg(feature = "pep-701")]
-enum StringQuoteChar {
-    Single,
-    Double,
-}
-
-#[cfg(feature = "pep-701")]
-impl TryFrom<char> for StringQuoteChar {
-    type Error = String;
-
-    fn try_from(c: char) -> Result<Self, Self::Error> {
-        match c {
-            '\'' => Ok(Self::Single),
-            '"' => Ok(Self::Double),
-            _ => Err(format!("Invalid string quote character: {c}")),
-        }
-    }
-}
-
-#[cfg(feature = "pep-701")]
-impl StringQuoteChar {
-    const fn as_char(self) -> char {
-        match self {
-            Self::Single => '\'',
-            Self::Double => '"',
-        }
-    }
-}
-
-#[derive(Copy, Clone, Debug)]
-#[cfg(feature = "pep-701")]
-enum StringQuoteSize {
-    Single,
-    Triple,
-}
-
-#[derive(Debug)]
-#[cfg(feature = "pep-701")]
-struct FStringContext {
-    quote_char: StringQuoteChar,
-    quote_size: StringQuoteSize,
-    parentheses_count: u32,
-    format_spec_count: u32,
-    is_raw_string: bool,
-}
-
-#[cfg(feature = "pep-701")]
-impl FStringContext {
-    fn new(quote_char: StringQuoteChar, quote_size: StringQuoteSize, is_raw_string: bool) -> Self {
-        Self {
-            quote_char,
-            quote_size,
-            parentheses_count: 0,
-            format_spec_count: 0,
-            is_raw_string,
-        }
-    }
-
-    /// Returns `true` if the current f-string allows multiline i.e., a triple-quoted f-string.
-    const fn allow_multiline(&self) -> bool {
-        matches!(self.quote_size, StringQuoteSize::Triple)
-    }
-
-    /// Returns `true` if the current f-string has open parentheses.
-    fn has_open_parentheses(&mut self) -> bool {
-        self.parentheses_count > 0
-    }
-
-    /// Increments the number of parentheses for the current f-string.
-    fn increment_opening_parentheses(&mut self) {
-        self.parentheses_count += 1;
-    }
-
-    /// Decrements the number of parentheses for the current f-string. If we're
-    /// in a format spec, also decrements the number of format specs.
-    fn decrement_closing_parentheses(&mut self) {
-        if self.is_in_format_spec() {
-            self.format_spec_count = self.format_spec_count.saturating_sub(1);
-        }
-        self.parentheses_count = self.parentheses_count.saturating_sub(1);
-    }
-
-    /// Returns `true` if the lexer is in a f-string expression i.e., between two curly braces.
-    fn is_in_expression(&self) -> bool {
-        self.parentheses_count > self.format_spec_count
-    }
-
-    /// Returns `true` if the lexer is in a f-string format spec i.e., after a colon.
-    fn is_in_format_spec(&self) -> bool {
-        self.format_spec_count > 0 && !self.is_in_expression()
-    }
-
-    /// Returns `true` if the colon (`:`) for the current f-string is in a valid
-    /// position i.e., at the same level of nesting as the opening parentheses token.
-    /// Increments the number of format specs if it is.
-    fn try_start_format_spec(&mut self) -> bool {
-        if self
-            .parentheses_count
-            .saturating_sub(self.format_spec_count)
-            == 1
-        {
-            self.format_spec_count += 1;
-            true
-        } else {
-            false
         }
     }
 }
