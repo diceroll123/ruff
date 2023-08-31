@@ -671,20 +671,6 @@ impl<'source> Lexer<'source> {
         // string; consume those two characters and ensure that we require a triple-quote to close
         let triple_quoted = self.cursor.eat_char2(quote, quote);
 
-        if let Some(fstring_context) = self.fstring_stack.last() {
-            // When we are in an f-string, check whether does the initial quote
-            // matches with f-strings quotes and if it is, then this must be a
-            // missing '}' token so raise the proper error.
-            if fstring_context.quote_char() == quote
-                && fstring_context.is_triple_quoted() == triple_quoted
-            {
-                return Err(LexicalError {
-                    error: LexicalErrorType::FStringError(FStringErrorType::UnclosedLbrace),
-                    location: self.offset() - fstring_context.quote_size(),
-                });
-            }
-        }
-
         let value_start = self.offset();
 
         let value_end = loop {
@@ -697,6 +683,21 @@ impl<'source> Lexer<'source> {
                     }
                 }
                 Some('\r' | '\n') if !triple_quoted => {
+                    if let Some(fstring_context) = self.fstring_stack.last() {
+                        // When we are in an f-string, check whether does the initial quote
+                        // matches with f-strings quotes and if it is, then this must be a
+                        // missing '}' token so raise the proper error.
+                        if fstring_context.quote_char() == quote
+                            && !fstring_context.is_triple_quoted()
+                        {
+                            return Err(LexicalError {
+                                error: LexicalErrorType::FStringError(
+                                    FStringErrorType::UnclosedLbrace,
+                                ),
+                                location: self.offset() - fstring_context.quote_size(),
+                            });
+                        }
+                    }
                     return Err(LexicalError {
                         error: LexicalErrorType::OtherError(
                             "EOL while scanning string literal".to_owned(),
@@ -716,6 +717,21 @@ impl<'source> Lexer<'source> {
 
                 Some(_) => {}
                 None => {
+                    if let Some(fstring_context) = self.fstring_stack.last() {
+                        // When we are in an f-string, check whether does the initial quote
+                        // matches with f-strings quotes and if it is, then this must be a
+                        // missing '}' token so raise the proper error.
+                        if fstring_context.quote_char() == quote
+                            && fstring_context.is_triple_quoted() == triple_quoted
+                        {
+                            return Err(LexicalError {
+                                error: LexicalErrorType::FStringError(
+                                    FStringErrorType::UnclosedLbrace,
+                                ),
+                                location: self.offset() - fstring_context.quote_size(),
+                            });
+                        }
+                    }
                     return Err(LexicalError {
                         error: if triple_quoted {
                             LexicalErrorType::Eof
